@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'register.dart';
+import 'home.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -11,7 +12,6 @@ class LoginScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-
             const Column(
               children: [
                 Text(
@@ -20,45 +20,55 @@ class LoginScreen extends StatelessWidget {
               ],
             ),
 
-// ---------------- Email
+            // ---------------- Email
             Column(
               children: [
-                TextField(decoration: InputDecoration(
+                TextField(
+                  decoration: InputDecoration(
                     labelText: 'E-mail',
                     border: OutlineInputBorder(),
                   ),
                 ),
 
-// ---------------- Senha
+                // ---------------- Senha
                 const SizedBox(height: 16),
 
-                        TextField(
-                            obscureText: true,
-                            decoration: InputDecoration(
-                            labelText: 'Senha',
-                            border: OutlineInputBorder(),
-                            ),
-                        )       
-                    ],
+                TextField(
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Senha',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-
-
-                    TextButton(onPressed: () {}, child: const Text('Entrar')),
-                    
-                    TextButton(
-                                  onPressed: () {
-                                    Navigator.push(context, 
-                                    MaterialPageRoute(
-                                      builder: (context) => RegisterScreen(),
-
-
-                                    ));
-                                  },
-                                  child: const Text('Login'),
-                                ),
-                    ],
-                ),
+              ],
             ),
-        );
-    }
+
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => Home(),
+                  ),
+                );
+              },
+              child: const Text('Entrar'),
+            ),
+
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RegisterScreen(),
+                  ),
+                );
+              },
+              child: const Text('Cadastrar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
