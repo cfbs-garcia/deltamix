@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 
-class LocalScreen extends StatelessWidget {
+class Local extends StatelessWidget {
+  const Local({super.key});
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Local'),
+      ),
+      body: const Center(
+        child: Text("Local legal yeah"),
+    ));
   }
 }
