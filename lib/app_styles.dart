@@ -17,19 +17,25 @@ class AppTheme {
   );
 
   // Decoração padrão para Inputs
-// No seu app_styles.dart, altere o hintText para labelText:
-static InputDecoration input(String label, IconData icon) {
-  return InputDecoration(
-    labelText: label,
-    labelStyle: const TextStyle(color: muted, fontSize: 14),
-    prefixIcon: Icon(icon, color: muted, size: 20),
-    filled: true,
-    fillColor: surface,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: green)),
-  );
-}
+  // No seu app_styles.dart, altere o hintText para labelText:
+  static InputDecoration input(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: muted, fontSize: 14),
+      prefixIcon: Icon(icon, color: muted, size: 20),
+      filled: true,
+      fillColor: surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: green),
+      ),
+    );
+  }
 
   // Estilo padrão para Botões
   static ButtonStyle button = ElevatedButton.styleFrom(

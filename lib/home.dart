@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'app_styles.dart';
 import 'connect.dart';
 import 'profile.dart';
@@ -43,9 +44,16 @@ class _HomeState extends State<Home> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'DELTAMIX',
-                    style: AppTheme.logo,
+
+                  // Textos separados nas pontas
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('DELTAMIX', style: AppTheme.logo),
+                        Text('Usuario', style: AppTheme.logo),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -67,7 +75,11 @@ class _HomeState extends State<Home> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildNavItem(icon: Icons.location_on, label: 'Postos', index: 0),
-              _buildNavItem(icon: Icons.directions_car, label: 'Veículo', index: 1),
+              _buildNavItem(
+                icon: Icons.directions_car,
+                label: 'Veículo',
+                index: 1,
+              ),
               _buildNavItem(icon: Icons.person, label: 'Perfil', index: 2),
             ],
           ),
@@ -77,7 +89,11 @@ class _HomeState extends State<Home> {
   }
 
   // Widget auxiliar para os itens da barra de navegação inferior flutuante
-  Widget _buildNavItem({required IconData icon, required String label, required int index}) {
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+  }) {
     final isSelected = currentPageIndex == index;
 
     return GestureDetector(
@@ -87,14 +103,12 @@ class _HomeState extends State<Home> {
             context,
             MaterialPageRoute(builder: (context) => const Local()),
           );
-        } 
-        else if (index == 1) {
+        } else if (index == 1) {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const Connect()),
           );
-        }
-        else {
+        } else {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const Profile()),

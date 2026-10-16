@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'app_styles.dart';
 import 'login.dart';
 
@@ -65,10 +66,19 @@ class RegisterScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
 
+                    TextField(
+                      style: const TextStyle(color: AppTheme.white),
+                      decoration: AppTheme.input('Nome', Icons.person_outline),
+                    ),
+                    const SizedBox(height: 16),
+
                     // ---------------- Email
                     TextField(
                       style: const TextStyle(color: AppTheme.white),
-                      decoration: AppTheme.input('E-mail', Icons.email_outlined),
+                      decoration: AppTheme.input(
+                        'E-mail',
+                        Icons.email_outlined,
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -79,12 +89,15 @@ class RegisterScreen extends StatelessWidget {
                       decoration: AppTheme.input('Senha', Icons.lock_outline),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // ---------------- Confirma a senha
                     TextField(
                       obscureText: true,
                       style: const TextStyle(color: AppTheme.white),
-                      decoration: AppTheme.input('Confirma a senha', Icons.lock_reset_outlined),
+                      decoration: AppTheme.input(
+                        'Confirma a senha',
+                        Icons.lock_reset_outlined,
+                      ),
                     ),
                     const SizedBox(height: 32),
 
@@ -112,7 +125,8 @@ class RegisterScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
+                              builder: (context) =>
+                                  Login(), // Corrigido aqui (sem const)
                             ),
                           );
                         },
