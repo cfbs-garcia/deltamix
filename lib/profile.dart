@@ -58,24 +58,35 @@ class Profile extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Botão Simples
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ElevatedButton(
-                    style: AppTheme.button,
-                    onPressed: () {},
-                    child: const Text('Trocar de foto'),
-                  ),
-                  const SizedBox(height: 15), // Espaçamento vertical
+              // Área de Botões (Expanded permite que a Column ocupe a altura restante)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ElevatedButton(
+                      style: AppTheme.button,
+                      onPressed: () {},
+                      child: const Text('Trocar de foto'),
+                    ),
+                    const SizedBox(height: 15),
 
-                  ElevatedButton(
-                    style: AppTheme.button,
-                    onPressed: () {},
-                    child: const Text('Editar o nome'),
-                  ),
-                  const SizedBox(height: 15),
-                ],
+                    ElevatedButton(
+                      style: AppTheme.button,
+                      onPressed: () {},
+                      child: const Text('Editar o nome'),
+                    ),
+
+                    // Empurra o botão abaixo para o final da tela
+                    const Spacer(),
+
+                    ElevatedButton(
+                      style: AppTheme.buttonRed,
+                      onPressed: () {},
+                      child: const Text('Desconectar a conta'),
+                    ),
+                    const SizedBox(height: 16), // Margem de segurança inferior
+                  ],
+                ),
               ),
             ],
           ),

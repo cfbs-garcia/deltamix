@@ -36,6 +36,8 @@ dependencies:
   google_maps_flutter: ^2.5.3
   geolocator: ^10.1.0
   cupertino_icons: ^1.0.8
+  flutter_classic_bluetooth: ^1.2.2 # Gerencia conexões RFCOMM/SPP no Android e outras plataformas
+  permission_handler: ^12.0.2
 
 dev_dependencies:
   flutter_test:

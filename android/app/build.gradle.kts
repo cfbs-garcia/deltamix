@@ -5,6 +5,7 @@ plugins {
 }
 
 android {
+
     namespace = "com.example.deltamix"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion

@@ -6,6 +6,7 @@ class AppTheme {
   static const Color surface = Color(0xFF121212);
   static const Color navBg = Color(0xFF161616);
   static const Color green = Color(0xFF00FF66);
+  static const Color red = Color(0xFFE53935);
   static const Color white = Colors.white;
   static const Color muted = Colors.white54;
 
@@ -42,7 +43,14 @@ class AppTheme {
     backgroundColor: green,
     foregroundColor: Colors.black,
     padding: const EdgeInsets.symmetric(vertical: 16),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    elevation: 0,
+  );
+  static ButtonStyle buttonRed = ElevatedButton.styleFrom(
+    backgroundColor: red,
+    foregroundColor : Colors.white,
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
     elevation: 0,
   );
 }
