@@ -57,7 +57,7 @@ class _LoginState extends State<Login> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.green.withOpacity(0.4),
+                            color: AppTheme.green.withValues(alpha: 0.4),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -330,7 +330,7 @@ class _LoginState extends State<Login> {
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: Colors.white.withOpacity(0.06),
+                        color: Colors.white.withValues(alpha: 0.06),
                       ),
                     ),
                     const Padding(
@@ -343,7 +343,7 @@ class _LoginState extends State<Login> {
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: Colors.white.withOpacity(0.06),
+                        color: Colors.white.withValues(alpha: 0.06),
                       ),
                     ),
                   ],

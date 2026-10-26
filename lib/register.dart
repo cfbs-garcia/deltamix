@@ -29,7 +29,7 @@ class RegisterScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.green.withOpacity(0.4),
+                            color: AppTheme.green.withValues(alpha: 0.4),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),

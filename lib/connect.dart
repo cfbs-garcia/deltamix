@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
-import 'package:permission_handler/permission_handler.dart'; // Essencial para gerenciar permissões no Android 12+
+import 'package:permission_handler/permission_handler.dart';
 
 import 'app_styles.dart';
-import 'device_card.dart'; // Componente visual do card de dispositivo
+import 'device_card.dart';
 
 class Connect extends StatefulWidget {
   const Connect({super.key});
@@ -13,176 +14,175 @@ class Connect extends StatefulWidget {
 }
 
 class _ConnectState extends State<Connect> {
-  // Instância do plugin para gerenciar o Bluetooth Clássico
-  final FlutterClassicBluetooth _bluetoothManager = FlutterClassicBluetooth();
-  
-  // Estados da tela
-  bool isScanningDevices = true;      // Controla se está buscando/carregando os dispositivos
-  bool isDeviceConnected = false;     // Indica se a conexão com o ELM327 foi estabelecida
-  
-  // Informações do dispositivo selecionado pelo usuário
-  String? selectedDeviceName;
-  String? selectedDeviceMacAddress;
-  
-  // Lista formatada para exibição na interface (Nome e Endereço MAC/Subtítulo)
-  List<Map<String, String>> formattedPairedDevices = [];
-  
-  // Objeto de conexão ativo (usado para enviar comandos AT futuramente)
-  BtcConnection? activeBluetoothConnection;
+  final FlutterClassicBluetooth _bluetooth = FlutterClassicBluetooth();
+
+  // Estados principais de controle
+  bool isScanning = true;
+  bool isConnecting = false;
+  bool isConnected = false;
+
+  // Dispositivo selecionado
+  String? selectedName;
+  String? selectedMac;
+
+  // Lista apenas com os dispositivos de interesse (OBD, ELM, VGATE, SCAN)
+  List<Map<String, String>> obdDevices = [];
+
+  BtcConnection? _activeConnection;
+  StreamSubscription<BtcConnectionState>? _stateSub;
 
   @override
   void initState() {
     super.initState();
-    // Ao entrar na tela, verificamos permissões e o estado do Bluetooth antes de carregar
-    _checkPermissionsAndLoadDevices();
+    _initBluetoothAndLoad();
   }
 
-  /// **Verificação de Permissões e Bluetooth:**
-  /// Solicita as permissões obrigatórias do Android 12+ (BLUETOOTH_SCAN e BLUETOOTH_CONNECT)
-  /// antes de tentar interagir com o adaptador.
-  Future<void> _checkPermissionsAndLoadDevices() async {
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _activeConnection?.finish();
+    super.dispose();
+  }
+
+  /// Pede permissões e carrega os aparelhos pareados
+  Future<void> _initBluetoothAndLoad() async {
     setState(() {
-      isScanningDevices = true;
-      selectedDeviceName = null;
-      selectedDeviceMacAddress = null;
-      formattedPairedDevices = [];
+      isScanning = true;
+      selectedName = null;
+      selectedMac = null;
+      obdDevices = [];
     });
 
     try {
-      // Solicita permissões de Bluetooth e Localização necessárias
-      Map<Permission, PermissionStatus> statuses = await [
+      // Solicita permissões de Bluetooth e Localização
+      await [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
         Permission.location,
       ].request();
 
-      bool scanGranted = statuses[Permission.bluetoothScan]?.isGranted ?? false;
-      bool connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+      // Busca todos os pareados no Android
+      final rawDevices = await _bluetooth.getPairedDevices();
 
-      if (!scanGranted || !connectGranted) {
-        if (mounted) {
-          setState(() {
-            isScanningDevices = false;
-          });
-          _showFeedbackMessage(
-            'Permissões de Bluetooth necessárias negadas. Ative-as nas configurações.',
-            Colors.red,
-          );
-        }
-        return;
-      }
+      // Palavras-chave dos adaptadores veiculares que nos interessam
+      final allowedKeywords = ['obd', 'elm', 'vgate', 'scan', 'vlinker', 'viecar'];
 
-      // Prossegue para carregar os dispositivos pareados
-      await _loadPairedBluetoothDevices();
-    } catch (error) {
+      // Filtra estritamente apenas os leitores de interesse, ignorando caixas de som, fones e afins
+      final filtered = rawDevices.where((device) {
+        final name = device.displayName.toLowerCase();
+        return allowedKeywords.any((key) => name.contains(key));
+      }).map((device) {
+        return {
+          'name': device.displayName.isNotEmpty ? device.displayName : 'Leitor OBD-II',
+          'sub': device.address,
+        };
+      }).toList();
+
       if (mounted) {
         setState(() {
-          isScanningDevices = false;
+          obdDevices = filtered;
+          isScanning = false;
         });
-        _showFeedbackMessage(
-          'Erro: Verifique se o Bluetooth está ligado no telemóvel.',
-          Colors.red,
-        );
+      }
+    } catch (e) {
+      debugPrint('[Bluetooth] Erro ao listar dispositivos: $e');
+      if (mounted) {
+        setState(() => isScanning = false);
+        _notify('Verifique se o Bluetooth do celular está ligado.', Colors.red);
       }
     }
   }
 
-  /// **Lógica de Busca:** 
-  /// O Bluetooth Clássico (SPP) exige que o ELM327 esteja previamente pareado 
-  /// nas configurações do Android. Esta função recupera essa lista do sistema.
-  Future<void> _loadPairedBluetoothDevices() async {
-    setState(() {
-      isScanningDevices = true;
-    });
+  /// Conecta ou desconecta do leitor OBD-II selecionado
+  Future<void> _toggleConnection() async {
+    if (selectedMac == null || isConnecting) return;
+
+    // Se já estiver conectado, aperta de novo para desconectar
+    if (isConnected) {
+      await _disconnect();
+      return;
+    }
+
+    setState(() => isConnecting = true);
 
     try {
-      // Busca a lista de aparelhos já pareados no Android
-      final rawPairedDevices = await _bluetoothManager.getPairedDevices();
+      debugPrint('[Bluetooth] Tentando abrir socket serial com $selectedMac...');
 
-      if (mounted) {
-        setState(() {
-          isScanningDevices = false;
-          // Transforma os dados brutos do plugin em um formato limpo para o ListView
-          formattedPairedDevices = rawPairedDevices.map((device) {
-            return {
-              'name': device.displayName.isNotEmpty 
-                  ? device.displayName 
-                  : 'Dispositivo Desconhecido',
-              'sub': device.address, // Endereço MAC único do adaptador
-            };
-          }).toList();
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          isScanningDevices = false;
-        });
-        _showFeedbackMessage(
-          'Falha ao carregar dispositivos. Certifique-se de que o Bluetooth está ligado.',
-          Colors.red,
+      // Leitores ELM327 funcionam melhor com conexões RFCOMM sem criptografia estrita (secure: false).
+      // Se der falha, tentamos o modo seguro por garantia.
+      BtcConnection? conn;
+      try {
+        conn = await _bluetooth.connect(
+          address: selectedMac!,
+          secure: false, // Insecure socket (padrão dos clones ELM327)
+          timeout: const Duration(seconds: 8),
         );
+      } catch (_) {
+        debugPrint('[Bluetooth] Insecure falhou, tentando modo seguro...');
+        conn = await _bluetooth.connect(
+          address: selectedMac!,
+          secure: true,
+          timeout: const Duration(seconds: 8),
+        );
+      }
+
+      if (conn.isConnected && mounted) {
+        _activeConnection = conn;
+
+        // Escuta se o leitor for desligado ou removido da tomada do carro
+        _stateSub?.cancel();
+        _stateSub = conn.stateStream.listen((state) {
+          if (state == BtcConnectionState.disconnected && mounted) {
+            setState(() {
+              isConnected = false;
+              _activeConnection = null;
+            });
+            _notify('Leitor OBD-II desconectado.', Colors.orange);
+          }
+        });
+
+        setState(() {
+          isConnected = true;
+          isConnecting = false;
+        });
+
+        _notify('Conectado a $selectedName com sucesso!', AppTheme.green);
+      }
+    } catch (e) {
+      debugPrint('[Bluetooth] Falha ao conectar: $e');
+      if (mounted) {
+        setState(() {
+          isConnecting = false;
+          isConnected = false;
+        });
+        _notify('Não foi possível conectar. Verifique se o leitor está ligado.', Colors.red);
       }
     }
   }
 
-  /// **Lógica de Conexão:**
-  /// Abre um canal de comunicação serial (RFCOMM) utilizando o endereço MAC 
-  /// do adaptador OBD-II selecionado pelo usuário.
-  Future<void> _connectToSelectedBluetoothDevice() async {
-    if (selectedDeviceMacAddress == null) return;
+  /// Desconecta de forma limpa
+  Future<void> _disconnect() async {
+    await _stateSub?.cancel();
+    _stateSub = null;
+    await _activeConnection?.finish();
+    _activeConnection = null;
 
-    try {
-      // Garante permissão antes de conectar
-      var scanStatus = await Permission.bluetoothScan.status;
-      var connectStatus = await Permission.bluetoothConnect.status;
-
-      if (!scanStatus.isGranted || !connectStatus.isGranted) {
-        _showFeedbackMessage('Permissões de Bluetooth necessárias para conectar.', Colors.red);
-        return;
-      }
-
-      // Tenta conectar ao endereço MAC via Bluetooth Clássico
-      activeBluetoothConnection = await _bluetoothManager.connect(
-        address: selectedDeviceMacAddress!,
-      );
-
-      if (activeBluetoothConnection != null && mounted) {
-        setState(() {
-          isDeviceConnected = true;
-        });
-
-        _showFeedbackMessage('Conectado a $selectedDeviceName com sucesso!', AppTheme.green);
-      } else {
-        if (mounted) {
-          _showFeedbackMessage('Falha ao conectar ao adaptador OBD-II.', Colors.red);
-        }
-      }
-    } catch (error) {
-      if (mounted) {
-        _showFeedbackMessage(
-          'Erro de conexão: Verifique se o Bluetooth está ligado e o adaptador pareado.',
-          Colors.red,
-        );
-      }
+    if (mounted) {
+      setState(() => isConnected = false);
+      _notify('Desconectado.', Colors.grey);
     }
   }
 
-  /// Atalho para exibir mensagens temporárias na parte inferior da tela (SnackBar)
-  void _showFeedbackMessage(String message, Color backgroundColor) {
+  void _notify(String msg, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: backgroundColor,
-        duration: const Duration(seconds: 3),
-      ),
+      SnackBar(content: Text(msg), backgroundColor: color, duration: const Duration(seconds: 3)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // O botão de conectar só fica habilitado se houver um dispositivo selecionado e não estiver conectado
-    bool isReadyToConnect = selectedDeviceName != null && !isDeviceConnected;
+    final bool canPress = selectedName != null && !isConnecting;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -192,45 +192,33 @@ class _ConnectState extends State<Connect> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Cabeçalho da Tela
+              // Cabeçalho simples e direto
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.white,
-                        ),
+                        icon: const Icon(Icons.arrow_back, color: AppTheme.white),
                         onPressed: () => Navigator.pop(context),
                       ),
                       const SizedBox(width: 4),
                       const Text(
                         'DELTAMIX',
-                        style: TextStyle(
-                          color: AppTheme.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: TextStyle(color: AppTheme.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
-                  // Badge de Status da Conexão no Topo
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: (isDeviceConnected ? AppTheme.green : Colors.red)
-                          .withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
+                      color: (isConnected ? AppTheme.green : Colors.red).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      isDeviceConnected ? 'CONECTADO' : 'DESCONECTADO',
+                      isConnected ? 'CONECTADO' : 'DESCONECTADO',
                       style: TextStyle(
-                        color: isDeviceConnected ? AppTheme.green : Colors.red,
+                        color: isConnected ? AppTheme.green : Colors.red,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -238,127 +226,148 @@ class _ConnectState extends State<Connect> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-              // Card de Status / Indicador Visual Central
+              // Card de status visual
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Column(
                   children: [
                     Icon(
-                      Icons.bluetooth,
-                      color: isScanningDevices
+                      isConnecting
+                          ? Icons.bluetooth_searching
+                          : (isConnected ? Icons.bluetooth_connected : Icons.bluetooth),
+                      color: isConnecting
                           ? Colors.amber
-                          : (isDeviceConnected ? AppTheme.green : Colors.red),
+                          : (isConnected ? AppTheme.green : AppTheme.muted),
                       size: 36,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
-                      isScanningDevices
-                          ? 'A procurar dispositivos...'
-                          : (isDeviceConnected
-                                ? 'Conectado a $selectedDeviceName'
-                                : 'Desconectado'),
-                      style: const TextStyle(
-                        color: AppTheme.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      isConnecting
+                          ? 'Conectando ao aparelho...'
+                          : (isConnected ? 'Conectado a $selectedName' : 'Selecione seu aparelho OBD-II'),
+                      style: const TextStyle(color: AppTheme.white, fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              // Título da Seção e Botão de Atualizar Lista
+              // Título da lista filtrada com botão de recarregar
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'DISPOSITIVOS BLUETOOTH',
-                    style: TextStyle(
-                      color: AppTheme.muted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    'APARELHOS OBD-II DISPONÍVEIS',
+                    style: TextStyle(color: AppTheme.muted, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
-                  if (!isScanningDevices)
-                    TextButton.icon(
-                      onPressed: _checkPermissionsAndLoadDevices,
-                      icon: const Icon(
-                        Icons.refresh,
-                        size: 14,
-                        color: AppTheme.green,
-                      ),
-                      label: const Text(
-                        'Atualizar',
-                        style: TextStyle(color: AppTheme.green, fontSize: 12),
-                      ),
+                  if (!isScanning)
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 18, color: AppTheme.green),
+                      onPressed: _initBluetoothAndLoad,
+                      tooltip: 'Atualizar lista',
                     ),
                 ],
               ),
+              const SizedBox(height: 8),
+
+              // Lista fluida exibindo SOMENTE os aparelhos automotivos
+              Expanded(
+                child: isScanning
+                    ? const Center(child: CircularProgressIndicator(color: AppTheme.green))
+                    : obdDevices.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.search_off, color: AppTheme.muted, size: 40),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Nenhum aparelho OBD-II encontrado.',
+                                    style: TextStyle(color: AppTheme.white, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'Certifique-se de parear seu leitor (OBD, ELM327 ou VGATE) nas configurações de Bluetooth do celular primeiro.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: AppTheme.muted, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextButton.icon(
+                                    onPressed: _initBluetoothAndLoad,
+                                    icon: const Icon(Icons.refresh, color: AppTheme.green),
+                                    label: const Text('Buscar novamente', style: TextStyle(color: AppTheme.green)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: obdDevices.length,
+                            itemBuilder: (context, index) {
+                              final dev = obdDevices[index];
+                              final name = dev['name']!;
+                              final mac = dev['sub']!;
+
+                              return DeviceCard(
+                                title: name,
+                                subtitle: mac,
+                                isSelected: selectedMac == mac,
+                                onTap: () {
+                                  if (isConnected) {
+                                    _notify('Desconecte antes de escolher outro aparelho.', Colors.orange);
+                                    return;
+                                  }
+                                  setState(() {
+                                    selectedName = name;
+                                    selectedMac = mac;
+                                  });
+                                },
+                              );
+                            },
+                          ),
+              ),
+
               const SizedBox(height: 12),
 
-              // Lista Dinâmica de Dispositivos Pareados
-              Expanded(
-                child: isScanningDevices
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Colors.amber),
-                      )
-                    : formattedPairedDevices.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Nenhum dispositivo encontrado. Verifique se o Bluetooth está ligado e o adaptador OBD-II está pareado nas configurações do Android.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppTheme.muted),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: formattedPairedDevices.length,
-                        itemBuilder: (context, index) {
-                          final currentDevice = formattedPairedDevices[index];
-                          final deviceName = currentDevice['name']!;
-                          final deviceMacAddress = currentDevice['sub']!;
-                          
-                          return DeviceCard(
-                            title: deviceName,
-                            subtitle: deviceMacAddress,
-                            isSelected: selectedDeviceName == deviceName,
-                            onTap: () => setState(() {
-                              selectedDeviceName = deviceName;
-                              selectedDeviceMacAddress = deviceMacAddress;
-                            }),
-                          );
-                        },
-                      ),
-              ),
-              const SizedBox(height: 16),
-
-              // Botão Principal de Conexão
+              // Botão de ação fluido e limpo
               SizedBox(
-                height: 52,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isReadyToConnect
-                        ? AppTheme.green
-                        : AppTheme.green.withOpacity(0.3),
-                    foregroundColor: isReadyToConnect ? Colors.black : AppTheme.muted,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    backgroundColor: isConnected
+                        ? Colors.red.shade700
+                        : (canPress ? AppTheme.green : AppTheme.green.withValues(alpha: 0.3)),
+                    foregroundColor: isConnected
+                        ? Colors.white
+                        : (canPress ? Colors.black : AppTheme.muted),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: isReadyToConnect ? _connectToSelectedBluetoothDevice : null,
-                  child: Text(
-                    isDeviceConnected ? 'Conectado' : 'Conectar',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  onPressed: canPress ? _toggleConnection : null,
+                  child: isConnecting
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                            ),
+                            SizedBox(width: 10),
+                            Text('Conectando...', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      : Text(
+                          isConnected ? 'Desconectar' : 'Conectar',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ],

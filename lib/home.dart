@@ -36,7 +36,7 @@ class _HomeState extends State<Home> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.green.withOpacity(0.4),
+                          color: AppTheme.green.withValues(alpha: 0.4),
                           blurRadius: 8,
                           spreadRadius: 2,
                         ),
@@ -69,7 +69,7 @@ class _HomeState extends State<Home> {
           decoration: BoxDecoration(
             color: const Color(0xFF161616),
             borderRadius: BorderRadius.circular(35),
-            border: Border.all(color: AppTheme.white.withOpacity(0.05)),
+            border: Border.all(color: AppTheme.white.withValues(alpha: 0.05)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,

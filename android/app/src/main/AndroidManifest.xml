@@ -1,8 +1,46 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ================================================================= -->
+    <!-- PERMISSÕES DE INTERNET E REDE                                     -->
+    <!-- Necessárias para o Google Maps carregar os mapas e azulejos (tiles) -->
+    <!-- ================================================================= -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ================================================================= -->
+    <!-- PERMISSÕES DE BLUETOOTH                                           -->
+    <!-- ================================================================= -->
+    <!-- Para Android 11 (API 30) ou versões anteriores -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- Para Android 12+ (API 31+): Obrigatório para buscar e conectar a periféricos -->
+    <!-- Obs: Não usamos 'neverForLocation' pois o app também usa GPS para os postos -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- ================================================================= -->
+    <!-- PERMISSÕES DE LOCALIZAÇÃO (GPS)                                   -->
+    <!-- Necessárias para Geolocator, Google Maps e encontrar postos       -->
+    <!-- ================================================================= -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:label="deltamix"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- ============================================================== -->
+        <!-- CHAVE DA API DO GOOGLE MAPS PARA ANDROID                       -->
+        <!-- IMPORTANTE: Substitua 'SUA_CHAVE_DO_GOOGLE_MAPS_AQUI' pela     -->
+        <!-- chave gerada no Google Cloud Console com 'Maps SDK for Android'-->
+        <!-- habilitado no seu projeto Google.                              -->
+        <!-- ============================================================== -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyAfSN9T59WizDZpqV6b4kJQmNmXdr0hLyg" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
