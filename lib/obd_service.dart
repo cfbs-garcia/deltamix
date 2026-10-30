@@ -28,13 +28,15 @@ class ObdService {
     BtcConnection connection,
     String command, {
     Duration timeout = const Duration(seconds: 4),
+    Stream<Uint8List>? inputStream,
   }) async {
     final completer = Completer<String>();
     final buffer = StringBuffer();
     StreamSubscription<Uint8List>? subscription;
 
-    // Escuta os bytes que chegam do adaptador
-    subscription = connection.input.listen(
+    // Escuta os bytes que chegam do adaptador (usa stream compartilhado se fornecido)
+    final stream = inputStream ?? connection.input;
+    subscription = stream.listen(
       (data) {
         final text = utf8.decode(data, allowMalformed: true);
         buffer.write(text);
@@ -74,25 +76,36 @@ class ObdService {
   }
 
   /// Inicializa o adaptador ELM327 com os comandos básicos recomendados
-  static Future<void> initializeElm327(BtcConnection connection) async {
+  static Future<void> initializeElm327(
+    BtcConnection connection, {
+    Stream<Uint8List>? inputStream,
+  }) async {
     debugPrint('[OBD-II] Inicializando adaptador ELM327...');
 
+    Future<void> safeSend(String cmd, {Duration timeout = const Duration(seconds: 4)}) async {
+      try {
+        await sendCommand(connection, cmd, timeout: timeout, inputStream: inputStream);
+      } catch (e) {
+        debugPrint('[OBD-II] Aviso ao enviar $cmd: $e');
+      }
+    }
+
     // ATZ: Reseta o chip ELM327 para o estado inicial de fábrica
-    await sendCommand(connection, 'ATZ', timeout: const Duration(seconds: 3));
+    await safeSend('ATZ', timeout: const Duration(seconds: 3));
     await Future.delayed(const Duration(milliseconds: 500));
 
     // ATE0: Desativa o Eco (não fica repetindo de volta o comando que a gente mandou)
-    await sendCommand(connection, 'ATE0');
+    await safeSend('ATE0');
 
     // ATL0: Desativa Line Feeds extras (\n), facilitando o parse de texto
-    await sendCommand(connection, 'ATL0');
+    await safeSend('ATL0');
 
     // ATS0: Remove espaços nas respostas hexadecimais para agilizar
     // (alguns preferem com espaços, mas ATS0 deixa mais leve a transmissão)
     // await sendCommand(connection, 'ATS0');
 
     // ATSP0: Protocolo automático (deixa o ELM327 descobrir sozinho se o carro usa CAN, ISO, KWP...)
-    await sendCommand(connection, 'ATSP0', timeout: const Duration(seconds: 5));
+    await safeSend('ATSP0', timeout: const Duration(seconds: 5));
 
     debugPrint('[OBD-II] ELM327 inicializado com sucesso e pronto para leitura.');
   }
@@ -103,13 +116,17 @@ class ObdService {
   /// Resposta esperada: "41 52 XX"
   /// Porcentagem (%) = (Byte A * 100) / 255
   /// Exemplo: se XX = 46 (Hex) -> 70 em decimal -> (70 * 100) / 255 = 27.45% de etanol (Gasolina brasileira comum!)
-  static Future<EthanolReadResult> readEthanolPercentage(BtcConnection connection) async {
+  static Future<EthanolReadResult> readEthanolPercentage(
+    BtcConnection connection, {
+    Stream<Uint8List>? inputStream,
+  }) async {
     try {
       debugPrint('[OBD-II] Solicitando PID 01 52 (Ethanol Fuel %)...');
       final response = await sendCommand(
         connection,
         '01 52',
-        timeout: const Duration(seconds: 6),
+        timeout: const Duration(seconds: 8),
+        inputStream: inputStream,
       );
 
       debugPrint('[OBD-II] Resposta bruta da ECU para etanol: "$response"');
@@ -125,7 +142,7 @@ class ObdService {
         );
       }
 
-      if (clean.contains('UNABLETOCONNECT') || clean.contains('ERROR')) {
+      if (clean.contains('UNABLETOCONNECT') || clean.contains('ERROR') || clean.contains('STOPPED')) {
         return EthanolReadResult(
           success: false,
           rawResponse: response,

@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'app_styles.dart';
 import 'device_card.dart';
+import 'obd_controller.dart';
 
 class Connect extends StatefulWidget {
   const Connect({super.key});
@@ -14,42 +13,52 @@ class Connect extends StatefulWidget {
 }
 
 class _ConnectState extends State<Connect> {
-  final FlutterClassicBluetooth _bluetooth = FlutterClassicBluetooth();
+  final ObdController _obd = ObdController.instance;
 
-  // Estados principais de controle
+  // Estado local da listagem de pareados
   bool isScanning = true;
-  bool isConnecting = false;
-  bool isConnected = false;
 
-  // Dispositivo selecionado
+  // Dispositivo selecionado na lista
   String? selectedName;
   String? selectedMac;
 
   // Lista apenas com os dispositivos de interesse (OBD, ELM, VGATE, SCAN)
   List<Map<String, String>> obdDevices = [];
 
-  BtcConnection? _activeConnection;
-  StreamSubscription<BtcConnectionState>? _stateSub;
-
   @override
   void initState() {
     super.initState();
+    selectedName = _obd.connectedName;
+    selectedMac = _obd.connectedMac;
+    _obd.addListener(_onObdStateChanged);
     _initBluetoothAndLoad();
   }
 
   @override
   void dispose() {
-    _stateSub?.cancel();
-    _activeConnection?.finish();
+    // Mantém a conexão ativa no ObdController ao voltar para a Home!
+    _obd.removeListener(_onObdStateChanged);
     super.dispose();
+  }
+
+  void _onObdStateChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_obd.isConnected) {
+        selectedName = _obd.connectedName;
+        selectedMac = _obd.connectedMac;
+      }
+    });
   }
 
   /// Pede permissões e carrega os aparelhos pareados
   Future<void> _initBluetoothAndLoad() async {
     setState(() {
       isScanning = true;
-      selectedName = null;
-      selectedMac = null;
+      if (!_obd.isConnected) {
+        selectedName = null;
+        selectedMac = null;
+      }
       obdDevices = [];
     });
 
@@ -62,7 +71,7 @@ class _ConnectState extends State<Connect> {
       ].request();
 
       // Busca todos os pareados no Android
-      final rawDevices = await _bluetooth.getPairedDevices();
+      final rawDevices = await _obd.bluetooth.getPairedDevices();
 
       // Palavras-chave dos adaptadores veiculares que nos interessam
       final allowedKeywords = ['obd', 'elm', 'vgate', 'scan', 'vlinker', 'viecar'];
@@ -95,81 +104,28 @@ class _ConnectState extends State<Connect> {
 
   /// Conecta ou desconecta do leitor OBD-II selecionado
   Future<void> _toggleConnection() async {
-    if (selectedMac == null || isConnecting) return;
+    if (_obd.isConnecting) return;
 
     // Se já estiver conectado, aperta de novo para desconectar
-    if (isConnected) {
-      await _disconnect();
+    if (_obd.isConnected) {
+      await _obd.disconnect();
+      _notify('Desconectado.', Colors.grey);
       return;
     }
 
-    setState(() => isConnecting = true);
+    if (selectedMac == null || selectedName == null) return;
 
-    try {
-      debugPrint('[Bluetooth] Tentando abrir socket serial com $selectedMac...');
+    final connected = await _obd.connect(
+      name: selectedName!,
+      mac: selectedMac!,
+    );
 
-      // Leitores ELM327 funcionam melhor com conexões RFCOMM sem criptografia estrita (secure: false).
-      // Se der falha, tentamos o modo seguro por garantia.
-      BtcConnection? conn;
-      try {
-        conn = await _bluetooth.connect(
-          address: selectedMac!,
-          secure: false, // Insecure socket (padrão dos clones ELM327)
-          timeout: const Duration(seconds: 8),
-        );
-      } catch (_) {
-        debugPrint('[Bluetooth] Insecure falhou, tentando modo seguro...');
-        conn = await _bluetooth.connect(
-          address: selectedMac!,
-          secure: true,
-          timeout: const Duration(seconds: 8),
-        );
-      }
+    if (!mounted) return;
 
-      if (conn.isConnected && mounted) {
-        _activeConnection = conn;
-
-        // Escuta se o leitor for desligado ou removido da tomada do carro
-        _stateSub?.cancel();
-        _stateSub = conn.stateStream.listen((state) {
-          if (state == BtcConnectionState.disconnected && mounted) {
-            setState(() {
-              isConnected = false;
-              _activeConnection = null;
-            });
-            _notify('Leitor OBD-II desconectado.', Colors.orange);
-          }
-        });
-
-        setState(() {
-          isConnected = true;
-          isConnecting = false;
-        });
-
-        _notify('Conectado a $selectedName com sucesso!', AppTheme.green);
-      }
-    } catch (e) {
-      debugPrint('[Bluetooth] Falha ao conectar: $e');
-      if (mounted) {
-        setState(() {
-          isConnecting = false;
-          isConnected = false;
-        });
-        _notify('Não foi possível conectar. Verifique se o leitor está ligado.', Colors.red);
-      }
-    }
-  }
-
-  /// Desconecta de forma limpa
-  Future<void> _disconnect() async {
-    await _stateSub?.cancel();
-    _stateSub = null;
-    await _activeConnection?.finish();
-    _activeConnection = null;
-
-    if (mounted) {
-      setState(() => isConnected = false);
-      _notify('Desconectado.', Colors.grey);
+    if (connected) {
+      _notify('Conectado a $selectedName com sucesso!', AppTheme.green);
+    } else {
+      _notify('Não foi possível conectar. Verifique se o leitor está ligado.', Colors.red);
     }
   }
 
@@ -182,7 +138,9 @@ class _ConnectState extends State<Connect> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canPress = selectedName != null && !isConnecting;
+    final bool isConnected = _obd.isConnected;
+    final bool isConnecting = _obd.isConnecting;
+    final bool canPress = (isConnected || selectedName != null) && !isConnecting;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -250,9 +208,22 @@ class _ConnectState extends State<Connect> {
                     Text(
                       isConnecting
                           ? 'Conectando ao aparelho...'
-                          : (isConnected ? 'Conectado a $selectedName' : 'Selecione seu aparelho OBD-II'),
+                          : (isConnected
+                              ? 'Conectado a ${_obd.connectedName ?? selectedName}'
+                              : 'Selecione seu aparelho OBD-II'),
                       style: const TextStyle(color: AppTheme.white, fontSize: 15, fontWeight: FontWeight.bold),
                     ),
+                    if (isConnected) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _obd.isInitializing
+                            ? 'Inicializando protocolo ELM327...'
+                            : (_obd.ethanolPercentage != null
+                                ? 'Etanol atual: ${_obd.ethanolPercentage!.toStringAsFixed(1)}%'
+                                : 'Pronto para leitura na tela Home'),
+                        style: const TextStyle(color: AppTheme.muted, fontSize: 12),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -336,6 +307,26 @@ class _ConnectState extends State<Connect> {
               ),
 
               const SizedBox(height: 12),
+
+              if (isConnected) ...[
+                SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.green,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.speed, size: 20),
+                    label: const Text(
+                      'Ver Medidor na Home',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
 
               // Botão de ação fluido e limpo
               SizedBox(
