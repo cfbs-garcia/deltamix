@@ -53,6 +53,7 @@ abstract class AppColors {
   /// [ALERTA / RESERVA] Coral Neon
   /// Usado para falhas na ECU, tanque na reserva ou erro no scanner.
   static const Color alertRed = Color(0xFFFF3B56);
+  static const Color dangerNeon = alertRed;
   static const Color alertRedGlow = Color(0x55FF3B56);
 
   // ==========================================

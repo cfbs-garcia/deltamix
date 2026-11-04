@@ -2,19 +2,24 @@ import 'package:flutter/material.dart';
 import '../../../core/bluetooth/obd_controller.dart';
 import '../../../core/models/vehicle_model.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../obd_connection/screens/connect_screen.dart';
 import '../widgets/ethanol_gauge_chart.dart';
 
 /// ============================================================================
-/// 4. DIAGNÓSTICO MAIS DETALHADO (TELEMETRIA COMPLETA DO MOTOR & PROTOCOLO ECU)
+/// 4. DIAGNÓSTICO MAIS DETALHADO (TELEMETRIA DO MOTOR & PROTOCOLO ECU)
 /// ============================================================================
 ///
-/// Estruturado exatamente conforme o layout requisitado:
-/// - Topo: [← Voltar] - TÍTULO DO CARRO (ex: CIVIC 2.0 FLEX) - [Status]
-/// - Gauge Chart Circular: 72.4% ETANOL + Badges [Predominante] e [AFR Est.]
-/// - Mistura no Tanque: Cards [🌿 Etanol: 72.4%] e [⛽ Gasolina: 27.6%]
-/// - Telemetria do Motor: Grid 3x2 (Bateria, Temp, RPM, Trim Rápido, Trim Longo, Ponto)
-/// - Saúde e Diagnóstico: [✔ Nenhuma falha detectada na injeção (MIL Desligada)]
-/// - Expansível: [v Dados Técnicos e Protocolo ECU] (Resposta bruta, protocolo, latência)
+/// Estruturado conforme a arquitetura modular do projeto e conectado aos PIDs
+/// reais da ECU via Bluetooth OBD-II:
+/// - Topo: [← Voltar] - TÍTULO DO CARRO - Badge dinâmico [ONLINE / OFFLINE]
+/// - Gauge Chart Circular com cor dinâmica por nível + Badges [Predominante] e [AFR Est.]
+/// - Mistura no Tanque: Cards [🌿 Etanol] e [⛽ Gasolina]
+/// - Telemetria do Motor (Indicadores pertinentes via OBD-II Mode 01):
+///     1. Rotação do Motor (RPM) — PID 01 0C
+///     2. STFT (Short Term Fuel Trim / Ajuste de Combustível a Curto Prazo) — PID 01 06
+///     3. LTFT (Long Term Fuel Trim / Ajuste de Combustível a Longo Prazo) — PID 01 07
+/// - Saúde e Diagnóstico da Injeção
+/// - Expansível: [Dados Técnicos e Protocolo ECU] com resposta hexadecimal bruta e latência real
 class DetailedDiagnosticScreen extends StatefulWidget {
   final VehicleModel vehicle;
 
@@ -24,83 +29,174 @@ class DetailedDiagnosticScreen extends StatefulWidget {
   });
 
   @override
-  State<DetailedDiagnosticScreen> createState() => _DetailedDiagnosticScreenState();
+  State<DetailedDiagnosticScreen> createState() =>
+      _DetailedDiagnosticScreenState();
 }
 
 class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
   final ObdController _obd = ObdController.instance;
 
-  // Cálculo da relação Ar-Combustível (AFR) estequiométrica estimada da mistura:
-  // Gasolina pura = 14.7:1 | Etanol puro = 9.0:1
+  /// Cálculo da relação Ar-Combustível (AFR) estequiométrica estimada da mistura:
+  /// Gasolina pura = 14.7:1 | Etanol hidratado puro = 9.0:1
   double _calculateEstimatedAfr(double ethanolPct) {
     final e = ethanolPct.clamp(0.0, 100.0) / 100.0;
     return ((1.0 - e) * 14.7) + (e * 9.0);
   }
 
+  /// Formata os valores de Fuel Trim (STFT / LTFT) exibindo sinal explícito (+ ou -).
+  String _formatFuelTrim(double? trim) {
+    if (trim == null) return '-- %';
+    final sign = trim > 0 ? '+' : '';
+    return '$sign${trim.toStringAsFixed(1)}%';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0C0D10),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF101217),
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.vehicle.displayName.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: Colors.white,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14, top: 12, bottom: 12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.ethanolNeon.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.ethanolNeon, width: 1),
+    return ListenableBuilder(
+      listenable: _obd,
+      builder: (context, _) {
+        final bool isConnected = _obd.isConnected;
+        final double ethanol =
+            _obd.ethanolPercentage ?? widget.vehicle.ethanolPercentage;
+        final double gasoline = (100.0 - ethanol).clamp(0.0, 100.0);
+        final double afr = _calculateEstimatedAfr(ethanol);
+        final bool isLoading = _obd.isInitializing || _obd.isReading;
+
+        // Formatação dos 3 indicadores pertinentes de telemetria do motor
+        final String rpmValue =
+            _obd.engineRpm != null ? '${_obd.engineRpm} RPM' : '-- RPM';
+        final String stftValue = _formatFuelTrim(_obd.shortTermFuelTrim);
+        final String ltftValue = _formatFuelTrim(_obd.longTermFuelTrim);
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF0C0D10),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF101217),
+            elevation: 0,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 20,
+                color: Colors.white,
               ),
-              child: Row(
-                children: const [
-                  Icon(Icons.check_circle_rounded, size: 12, color: AppColors.ethanolNeon),
-                  SizedBox(width: 4),
-                  Text(
-                    'ONLINE',
-                    style: TextStyle(
-                      color: AppColors.ethanolNeon,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              widget.vehicle.displayName.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
+                color: Colors.white,
               ),
             ),
+            actions: [
+              // Badge interativo de status da conexão Bluetooth OBD-II
+              Padding(
+                padding: const EdgeInsets.only(right: 14, top: 12, bottom: 12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: isConnected
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ConnectScreen(),
+                            ),
+                          );
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isConnected
+                          ? AppColors.ethanolNeon.withValues(alpha: 0.12)
+                          : AppColors.dangerNeon.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isConnected
+                            ? AppColors.ethanolNeon
+                            : AppColors.dangerNeon,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isConnected
+                              ? Icons.check_circle_rounded
+                              : Icons.bluetooth_disabled_rounded,
+                          size: 12,
+                          color: isConnected
+                              ? AppColors.ethanolNeon
+                              : AppColors.dangerNeon,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isConnected ? 'ONLINE' : 'OFFLINE',
+                          style: TextStyle(
+                            color: isConnected
+                                ? AppColors.ethanolNeon
+                                : AppColors.dangerNeon,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _obd,
-          builder: (context, _) {
-            final double ethanol = _obd.ethanolPercentage ?? widget.vehicle.ethanolPercentage;
-            final double gasoline = (100.0 - ethanol).clamp(0.0, 100.0);
-            final double afr = _calculateEstimatedAfr(ethanol);
-            final bool isLoading = _obd.isInitializing || _obd.isReading;
-
-            return SingleChildScrollView(
+          body: SafeArea(
+            child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Banner de aviso caso haja mensagem de erro da ECU/Bluetooth
+                  if (_obd.errorMessage != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.dangerNeon.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.dangerNeon.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: AppColors.dangerNeon,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _obd.errorMessage!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // ===========================================================
                   // 1. MOSTRADOR CENTRAL (GAUGE CHART CIRCULAR + BADGES)
                   // ===========================================================
@@ -109,7 +205,9 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF14161C),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -124,7 +222,7 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Badges: [ Predominante: Etanol ]  [ AFR Est.: 10.1:1 ]
+                        // Badges: [ Predominante ]  [ AFR Est. ]
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -134,7 +232,7 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                                   : ethanol <= 32.0
                                       ? 'Predominante: Gasolina'
                                       : 'Mistura Flex',
-                              color: AppColors.ethanolNeon,
+                              color: EthanolGaugeChart.colorForLevel(ethanol),
                               icon: Icons.local_fire_department_rounded,
                             ),
                             const SizedBox(width: 10),
@@ -161,12 +259,17 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                       // Card Etanol
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                            horizontal: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF14161C),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: AppColors.ethanolNeon.withValues(alpha: 0.35),
+                              color: AppColors.ethanolNeon.withValues(
+                                alpha: 0.35,
+                              ),
                               width: 1.2,
                             ),
                           ),
@@ -204,12 +307,17 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                       // Card Gasolina
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                            horizontal: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF14161C),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: AppColors.gasolineNeon.withValues(alpha: 0.35),
+                              color: AppColors.gasolineNeon.withValues(
+                                alpha: 0.35,
+                              ),
                               width: 1.2,
                             ),
                           ),
@@ -248,31 +356,46 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                   const SizedBox(height: 22),
 
                   // ===========================================================
-                  // 3. TELEMETRIA DO MOTOR (GRID 3x2)
+                  // 3. TELEMETRIA DO MOTOR (RPM, STFT E LTFT)
                   // ===========================================================
+                  // Mantém os 3 indicadores pertinentes da injeção eletrônica:
+                  // - Rotação do Motor (RPM) [PID 01 0C]
+                  // - Short Term Fuel Trim (STFT) - Ajuste a Curto Prazo [PID 01 06]
+                  // - Long Term Fuel Trim (LTFT) - Ajuste a Longo Prazo [PID 01 07]
                   _buildSectionHeader('TELEMETRIA DO MOTOR'),
                   const SizedBox(height: 8),
 
-                  // Linha 1: Bateria | Temperatura | Rotação
                   Row(
                     children: [
-                      Expanded(child: _buildTelemetryTile('Bateria', '14.1 V', Icons.battery_charging_full_rounded, AppColors.obdCyan)),
+                      Expanded(
+                        child: _buildTelemetryTile(
+                          label: 'Rotação (RPM)',
+                          subtitle: 'Velocidade do Motor',
+                          value: rpmValue,
+                          icon: Icons.speed_rounded,
+                          valueColor: AppColors.ethanolNeon,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      Expanded(child: _buildTelemetryTile('Temperatura', '92 °C', Icons.thermostat_rounded, const Color(0xFFFF9500))),
+                      Expanded(
+                        child: _buildTelemetryTile(
+                          label: 'STFT (Trim Rápido)',
+                          subtitle: 'Ajuste Curto Prazo',
+                          value: stftValue,
+                          icon: Icons.show_chart_rounded,
+                          valueColor: AppColors.obdCyan,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      Expanded(child: _buildTelemetryTile('Rotação', '850 RPM', Icons.speed_rounded, AppColors.ethanolNeon)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Linha 2: Trim Rápido | Trim Longo | Ponto
-                  Row(
-                    children: [
-                      Expanded(child: _buildTelemetryTile('Trim Rápido', '+2.3%', Icons.show_chart_rounded, Colors.white)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildTelemetryTile('Trim Longo', '+16.4%', Icons.timeline_rounded, Colors.white)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildTelemetryTile('Ponto', '12.0°', Icons.flash_on_rounded, AppColors.ethanolNeon)),
+                      Expanded(
+                        child: _buildTelemetryTile(
+                          label: 'LTFT (Trim Longo)',
+                          subtitle: 'Ajuste Longo Prazo',
+                          value: ltftValue,
+                          icon: Icons.timeline_rounded,
+                          valueColor: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
 
@@ -284,15 +407,24 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                   _buildSectionHeader('SAÚDE E DIAGNÓSTICO'),
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF14161C),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.ethanolNeon.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: AppColors.ethanolNeon.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: const [
-                        Icon(Icons.check_circle_rounded, color: AppColors.ethanolNeon, size: 20),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.ethanolNeon,
+                          size: 20,
+                        ),
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -317,12 +449,19 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF14161C),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
                     ),
                     child: Theme(
-                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      data: Theme.of(context).copyWith(
+                        dividerColor: Colors.transparent,
+                      ),
                       child: ExpansionTile(
-                        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        tilePadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 2,
+                        ),
                         iconColor: AppColors.ethanolNeon,
                         collapsedIconColor: AppColors.textMuted,
                         title: const Text(
@@ -335,20 +474,45 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                         ),
                         subtitle: const Text(
                           'Toque para expandir',
-                          style: TextStyle(color: Color(0xFF7A8394), fontSize: 11),
+                          style: TextStyle(
+                            color: Color(0xFF7A8394),
+                            fontSize: 11,
+                          ),
                         ),
                         children: [
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             child: Column(
                               children: [
-                                const Divider(color: Color(0xFF222632), height: 1),
+                                const Divider(
+                                  color: Color(0xFF222632),
+                                  height: 1,
+                                ),
                                 const SizedBox(height: 10),
-                                _buildTechnicalBullet('Resposta Bruta', '41 52 4A (Hex)'),
-                                _buildTechnicalBullet('Protocolo', 'ISO 15765-4 CAN 500k'),
-                                _buildTechnicalBullet('Latência', '42ms'),
-                                _buildTechnicalBullet('Comando SAE', 'Mode 01 PID 52 (01 52\\r)'),
-                                _buildTechnicalBullet('Fila Serial', 'Half-Duplex FIFO Ativa'),
+                                _buildTechnicalBullet(
+                                  'Resposta Bruta (01 52)',
+                                  _obd.lastRawResponse?.isNotEmpty == true
+                                      ? _obd.lastRawResponse!
+                                      : 'Aguardando leitura...',
+                                ),
+                                _buildTechnicalBullet(
+                                  'Scanner Conectado',
+                                  _obd.connectedName ?? 'Não conectado',
+                                ),
+                                _buildTechnicalBullet(
+                                  'Latência da ECU',
+                                  _obd.lastLatencyMs != null
+                                      ? '${_obd.lastLatencyMs} ms'
+                                      : '-- ms',
+                                ),
+                                _buildTechnicalBullet(
+                                  'PIDs Monitorados',
+                                  '01 52 (Etanol), 01 0C (RPM), 01 06 (STFT), 01 07 (LTFT)',
+                                ),
+                                _buildTechnicalBullet(
+                                  'Fila Serial',
+                                  'Half-Duplex FIFO Ativa',
+                                ),
                               ],
                             ),
                           ),
@@ -359,7 +523,7 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Botão de Atualizar Leitura
+                  // Botão de Atualizar Leitura (ou Conectar se estiver offline)
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.ethanolNeon,
@@ -369,27 +533,55 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                         borderRadius: BorderRadius.circular(26),
                       ),
                     ),
-                    onPressed: isLoading ? null : _obd.refreshEthanol,
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            if (isConnected) {
+                              _obd.refreshEthanol();
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ConnectScreen(),
+                                ),
+                              );
+                            }
+                          },
                     icon: isLoading
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
                           )
-                        : const Icon(Icons.refresh_rounded, size: 20),
+                        : Icon(
+                            isConnected
+                                ? Icons.refresh_rounded
+                                : Icons.bluetooth_searching_rounded,
+                            size: 20,
+                          ),
                     label: Text(
-                      isLoading ? 'Consultando ECU...' : 'Atualizar Leitura',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      isLoading
+                          ? 'Consultando ECU...'
+                          : isConnected
+                              ? 'Atualizar Leitura'
+                              : 'Conectar Scanner OBD-II',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
 
                   const SizedBox(height: 16),
                 ],
               ),
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -439,9 +631,16 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
     );
   }
 
-  Widget _buildTelemetryTile(String label, String value, IconData icon, Color valueColor) {
+  /// Card de indicador da Telemetria do Motor (RPM, STFT e LTFT)
+  Widget _buildTelemetryTile({
+    required String label,
+    required String subtitle,
+    required String value,
+    required IconData icon,
+    required Color valueColor,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF14161C),
         borderRadius: BorderRadius.circular(14),
@@ -455,14 +654,27 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF7A8394),
+              color: Colors.white,
               fontSize: 10.5,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
+            textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: Color(0xFF7A8394),
+              fontSize: 9.5,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(
@@ -482,8 +694,21 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('• $label:', style: const TextStyle(color: Color(0xFF7A8394), fontSize: 12)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            '• $label:',
+            style: const TextStyle(color: Color(0xFF7A8394), fontSize: 12),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
