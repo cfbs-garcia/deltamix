@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-
-import 'register.dart';
+import 'core/theme/app_theme.dart';
+import 'features/auth/screens/login_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const DeltamixApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class DeltamixApp extends StatelessWidget {
+  const DeltamixApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
+      title: 'Deltamix',
       debugShowCheckedModeBanner: false,
-      home: RegisterScreen(),
+      theme: AppTheme.darkTheme,
+      home: const LoginScreen(),
     );
   }
 }
