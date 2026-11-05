@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../navigation/main_scaffold.dart';
+import '../../../core/services/auth_service.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,12 +16,50 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _rememberMe = false;
+  bool _loading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _msg(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final pass = _passwordController.text;
+    if (email.isEmpty || pass.isEmpty) {
+      _msg('Informe e-mail e senha.');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AuthService.instance.login(email: email, password: pass);
+      // Volta para a raiz: o AccountGate decide a tela (principal, verificação...).
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      if (mounted) _msg(AuthService.errorMessage(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _socialLogin(Future<void> Function() action) async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await action();
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      final text = AuthService.errorMessage(e);
+      if (mounted && text.isNotEmpty) _msg(text);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -175,14 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // Botão Principal: Entrar (Estilo Neon Pill)
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MainScaffold(),
-                      ),
-                    );
-                  },
+                  onPressed: _loading ? null : _login,
                   child: const Text('Entrar'),
                 ),
 
@@ -216,13 +247,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     _buildSocialButton(
                       icon: Icons.g_mobiledata_rounded,
                       iconSize: 32,
-                      onTap: () {},
+                      onTap: () =>
+                          _socialLogin(AuthService.instance.signInWithGoogle),
                     ),
                     const SizedBox(width: 16),
                     _buildSocialButton(
                       icon: Icons.facebook_rounded,
                       iconSize: 26,
-                      onTap: () {},
+                      onTap: () => _socialLogin(
+                        AuthService.instance.signInWithFacebook,
+                      ),
                     ),
                   ],
                 ),
