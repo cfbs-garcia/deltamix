@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/validators.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeTerms = false;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -25,6 +28,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _msg(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _register() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final pass = _passwordController.text;
+
+    if (name.isEmpty) {
+      _msg('Informe seu nome.');
+      return;
+    }
+    final emailError = Validators.email(email);
+    if (emailError != null) {
+      _msg(emailError);
+      return;
+    }
+    final passError = Validators.password(pass, email: email, name: name);
+    if (passError != null) {
+      _msg(passError);
+      return;
+    }
+    if (pass != _confirmPasswordController.text) {
+      _msg('As senhas não coincidem.');
+      return;
+    }
+    if (!_agreeTerms) {
+      _msg('Aceite os Termos de Uso e Privacidade para continuar.');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await AuthService.instance.register(
+        name: name,
+        email: email,
+        password: pass,
+      );
+      // Volta para a raiz: o AccountGate leva para a verificação de e-mail.
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      if (mounted) _msg(AuthService.errorMessage(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -139,6 +190,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
 
+                const Padding(
+                  padding: EdgeInsets.only(top: 8, left: 6, right: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Mínimo 8 caracteres, com maiúscula, minúscula e número. '
+                      'Evite sequências e senhas comuns.',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 14),
 
                 // Campo: Confirmar Senha
@@ -221,9 +288,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Botão: Cadastrar
                 ElevatedButton(
-                  onPressed: () {
-                    // Ação de cadastro
-                  },
+                  onPressed: _loading ? null : _register,
                   child: const Text('Cadastrar'),
                 ),
 

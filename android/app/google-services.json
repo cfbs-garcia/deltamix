@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "997352808909",
+    "project_id": "deltamix-23251",
+    "storage_bucket": "deltamix-23251.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997352808909:android:7eaabde2c552111d13a484",
+        "android_client_info": {
+          "package_name": "com.example.deltamix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxHDRQa8Z2RCQ8r6DB70LEvWVwEYWbFfM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

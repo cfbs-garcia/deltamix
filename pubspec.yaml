@@ -38,6 +38,10 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_classic_bluetooth: ^1.2.2 # Gerencia conexões RFCOMM/SPP no Android e outras plataformas
   permission_handler: ^12.0.2
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
