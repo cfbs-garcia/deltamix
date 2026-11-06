@@ -3,18 +3,19 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/bluetooth/obd_controller.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 
 /// ============================================================================
-/// ESQUELETO: TELA DE PERFIL E CONFIGURAÇÕES AUTOMOTIVAS
+/// TELA DE PERFIL E CONFIGURAÇÕES AUTOMOTIVAS
 /// ============================================================================
 ///
 /// Responsabilidades desta tela:
-/// 1. Exibir dados do usuário autenticado.
-/// 2. Ajustar parâmetros técnicos do leitor OBD-II (RFCOMM Insecure, Timeouts, Polling).
-/// 3. Gerenciar preferências do veículo e notificações de predominância de combustível.
-/// 4. Logout e gerenciamento de sessão local via StorageService.
+/// 1. Exibir e editar dados do usuário autenticado (nome e foto via Firestore).
+/// 2. Ajustar a Frequência de Leitura da ECU (conectada em tempo real ao ObdController).
+/// 3. Exibir informações da versão do sistema e protocolo OBD-II.
+/// 4. Logout e exclusão (soft delete) da conta.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -23,13 +24,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // ---------------------------------------------------------------------------
-  // ESTADO LOCAL DE PREFERÊNCIAS (Será persistido no StorageService)
-  // ---------------------------------------------------------------------------
-  bool _useInsecureRfcomm = true; // Recomendado para clones ELM327 / Vgate
-  bool _autoReconnect = true;     // Reconectar ao ligar a ignição
-  bool _fuelAlertsEnabled = true;  // Notificar quando a proporção mudar bruscamente
-  String _pollingInterval = '500 ms';
+  final ObdController _obd = ObdController.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -50,38 +45,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // 2. SEÇÃO DE VEÍCULOS CADASTRADOS (ATALHO PARA GARAGEM)
-              _buildSectionTitle('VEÍCULOS E HARDWARE'),
-              const SizedBox(height: 10),
-              _buildVehiclesShortcutTile(),
-
-              const SizedBox(height: 24),
-
-              // 3. SEÇÃO DE CONFIGURAÇÕES DO PROTOCOLO OBD-II / BLUETOOTH
+              // 2. SEÇÃO DE CONFIGURAÇÕES DO PROTOCOLO OBD-II / BLUETOOTH
               _buildSectionTitle('PARÂMETROS OBD-II / ELM327'),
               const SizedBox(height: 10),
               _buildObdSettingsGroup(),
 
               const SizedBox(height: 24),
 
-              // 4. PREFERÊNCIAS DE DIAGNÓSTICO E ALERTAS
-              _buildSectionTitle('PREFERÊNCIAS DE DIAGNÓSTICO'),
-              const SizedBox(height: 10),
-              _buildDiagnosticsSettingsGroup(),
-
-              const SizedBox(height: 24),
-
-              // 5. INFORMAÇÕES DO SISTEMA E VERSÃO
+              // 3. INFORMAÇÕES DO SISTEMA E VERSÃO
               _buildAppInfoTile(),
 
               const SizedBox(height: 32),
 
-              // 6. BOTÃO DE SAIR POSICIONADO EM BAIXO (RODAPÉ)
+              // 4. BOTÃO DE SAIR POSICIONADO EM BAIXO (RODAPÉ)
               _buildLogoutButton(),
 
               const SizedBox(height: 8),
 
-              // 7. EXCLUIR CONTA (SOFT DELETE)
+              // 5. EXCLUIR CONTA (SOFT DELETE)
               TextButton.icon(
                 onPressed: _showDeleteConfirmation,
                 icon: const Icon(
@@ -243,119 +224,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Card de atalho para a lista de veículos salvos
-  Widget _buildVehiclesShortcutTile() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: ListTile(
-        leading: const Icon(Icons.garage_rounded, color: AppColors.ethanolNeon),
-        title: const Text(
-          'Minha Garagem',
-          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-        ),
-        subtitle: const Text(
-          '1 veículo cadastrado (Golf 1.4 TSI)',
-          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textMuted),
-        onTap: () {
-          // TODO: Abrir tela da Garagem (features/garage/screens/garage_screen.dart)
-        },
-      ),
-    );
-  }
-
-  /// Grupo de configurações específicas do hardware automotivo
+  /// Configuração real de Frequência de Leitura da ECU
   Widget _buildObdSettingsGroup() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          // Switch RFCOMM Inseguro (Essencial para leitores clones como ELM327 v1.5)
-          SwitchListTile(
-            title: const Text(
-              'Modo RFCOMM Inseguro',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            subtitle: const Text(
-              'Compatibilidade máxima com leitores ELM327/Vgate clones.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
-            ),
-            value: _useInsecureRfcomm,
-            onChanged: (val) {
-              setState(() => _useInsecureRfcomm = val);
-              // TODO: Salvar preferência no StorageService
-            },
+    return ListenableBuilder(
+      listenable: _obd,
+      builder: (context, _) {
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
           ),
-          const Divider(height: 1),
-          // Reconexão Automática
-          SwitchListTile(
-            title: const Text(
-              'Reconexão Automática',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            subtitle: const Text(
-              'Tentar conectar ao ligar o app perto do veículo.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
-            ),
-            value: _autoReconnect,
-            onChanged: (val) {
-              setState(() => _autoReconnect = val);
-            },
-          ),
-          const Divider(height: 1),
-          // Intervalo de Polling (Frequência da Fila Serial)
-          ListTile(
+          child: ListTile(
             title: const Text(
               'Frequência de Leitura da ECU',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             subtitle: Text(
-              'Atual: $_pollingInterval (Taxa de envio do PID 01 52)',
+              'Atual: ${_obd.pollingIntervalLabel} (Taxa de atualização dos sensores)',
               style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
             ),
-            trailing: const Icon(Icons.timer_outlined, color: AppColors.obdCyan),
+            trailing: const Icon(
+              Icons.timer_outlined,
+              color: AppColors.obdCyan,
+            ),
             onTap: _showPollingIntervalPicker,
           ),
-        ],
-      ),
-    );
-  }
-
-  /// Grupo de preferências da regra de negócio de combustível
-  Widget _buildDiagnosticsSettingsGroup() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          SwitchListTile(
-            title: const Text(
-              'Alertas de Predominância',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            subtitle: const Text(
-              'Avisar quando houver troca entre Etanol e Gasolina.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
-            ),
-            value: _fuelAlertsEnabled,
-            onChanged: (val) {
-              setState(() => _fuelAlertsEnabled = val);
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -623,6 +523,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showPollingIntervalPicker() {
+    final currentMs = _obd.pollingIntervalMs;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceCard,
@@ -637,7 +539,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Intervalo de Envio do PID 01 52',
+                  'Frequência de Leitura da ECU',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -646,23 +548,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
                 ListTile(
-                  title: const Text('250 ms (Rápido - recomendado para CAN Bus)', style: TextStyle(color: AppColors.textPrimary)),
+                  title: const Text(
+                    '250 ms (Rápido - Padrão recomendado)',
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: currentMs == 250
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.ethanolNeon,
+                        )
+                      : null,
                   onTap: () {
-                    setState(() => _pollingInterval = '250 ms');
+                    _obd.setPollingIntervalMs(250);
                     Navigator.pop(context);
                   },
                 ),
                 ListTile(
-                  title: const Text('500 ms (Padrão equilibrado)', style: TextStyle(color: AppColors.textPrimary)),
+                  title: const Text(
+                    '500 ms (Equilibrado)',
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: currentMs == 500
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.ethanolNeon,
+                        )
+                      : null,
                   onTap: () {
-                    setState(() => _pollingInterval = '500 ms');
+                    _obd.setPollingIntervalMs(500);
                     Navigator.pop(context);
                   },
                 ),
                 ListTile(
-                  title: const Text('1000 ms (Econômico)', style: TextStyle(color: AppColors.textPrimary)),
+                  title: const Text(
+                    '1000 ms (Econômico)',
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: currentMs == 1000
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.ethanolNeon,
+                        )
+                      : null,
                   onTap: () {
-                    setState(() => _pollingInterval = '1000 ms');
+                    _obd.setPollingIntervalMs(1000);
                     Navigator.pop(context);
                   },
                 ),
@@ -680,7 +609,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.surfaceCard,
-          title: const Text('Encerrar Sessão?', style: TextStyle(color: AppColors.textPrimary)),
+          title: const Text(
+            'Encerrar Sessão?',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
           content: const Text(
             'Você será desconectado e o leitor OBD-II será desvinculado temporariamente.',
             style: TextStyle(color: AppColors.textSecondary),
@@ -688,14 +620,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: AppColors.textMuted)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 _logout();
               },
-              child: const Text('Sair', style: TextStyle(color: AppColors.alertRed)),
+              child: const Text(
+                'Sair',
+                style: TextStyle(color: AppColors.alertRed),
+              ),
             ),
           ],
         );

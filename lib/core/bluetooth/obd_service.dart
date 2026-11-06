@@ -97,16 +97,16 @@ class ObdService {
 
     // ATZ: Reseta o chip ELM327 para o estado inicial
     await safeSend(ObdCommands.reset, timeout: const Duration(seconds: 3));
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 300));
 
     // ATE0: Desativa o Eco dos comandos
-    await safeSend(ObdCommands.echoOff);
+    await safeSend(ObdCommands.echoOff, timeout: const Duration(seconds: 2));
 
     // ATL0: Desativa quebras de linha extras (\n)
-    await safeSend(ObdCommands.linefeedsOff);
+    await safeSend(ObdCommands.linefeedsOff, timeout: const Duration(seconds: 2));
 
     // ATSP0: Seleciona detecção automática de protocolo da ECU
-    await safeSend(ObdCommands.autoProtocol, timeout: const Duration(seconds: 5));
+    await safeSend(ObdCommands.autoProtocol, timeout: const Duration(seconds: 3));
 
     debugPrint('[OBD-II] ELM327 inicializado com sucesso e pronto para leitura.');
   }
@@ -123,7 +123,7 @@ class ObdService {
       final response = await sendCommand(
         connection,
         ObdCommands.ethanolFuelPercent,
-        timeout: const Duration(seconds: 8),
+        timeout: const Duration(seconds: 3),
         inputStream: inputStream,
       );
 
@@ -182,7 +182,7 @@ class ObdService {
       final response = await sendCommand(
         connection,
         ObdCommands.engineRpm,
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(milliseconds: 2500),
         inputStream: inputStream,
       );
       return ObdParser.parseRpm(response);
@@ -203,7 +203,7 @@ class ObdService {
       final response = await sendCommand(
         connection,
         ObdCommands.shortTermFuelTrim,
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(milliseconds: 2500),
         inputStream: inputStream,
       );
       return ObdParser.parseFuelTrim(response, pidHex: '06');
@@ -224,7 +224,7 @@ class ObdService {
       final response = await sendCommand(
         connection,
         ObdCommands.longTermFuelTrim,
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(milliseconds: 2500),
         inputStream: inputStream,
       );
       return ObdParser.parseFuelTrim(response, pidHex: '07');

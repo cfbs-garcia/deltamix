@@ -11,37 +11,26 @@ class GarageController extends ChangeNotifier {
   static final GarageController instance = GarageController._internal();
   GarageController._internal();
 
-  final List<VehicleModel> _vehicles = [
-    VehicleModel(
-      id: '1',
-      model: 'Golf 1.4 TSI Flex',
-      plate: 'BRA-2E19',
-      nickname: 'Foguete Flex',
-      obdName: null,
-      obdMacAddress: null,
-      isObdConnected: false,
-      ethanolPercentage: 0.0,
-    ),
-    VehicleModel(
-      id: '2',
-      model: 'Civic 2.0 i-VTEC Flex',
-      plate: 'ABC-1D23',
-      nickname: null, // Sem apelido opcional
-      obdName: null,
-      obdMacAddress: null,
-      isObdConnected: false,
-      ethanolPercentage: 0.0,
-    ),
-  ];
+  final List<VehicleModel> _vehicles = [];
 
   VehicleModel? _selectedVehicle;
 
   List<VehicleModel> get vehicles => List.unmodifiable(_vehicles);
-  VehicleModel get activeVehicle => _selectedVehicle ?? _vehicles.first;
+  VehicleModel? get activeVehicle =>
+      _selectedVehicle ?? (_vehicles.isNotEmpty ? _vehicles.first : null);
 
   /// Define o veículo atualmente selecionado na garagem
   void selectVehicle(VehicleModel vehicle) {
     _selectedVehicle = vehicle;
+    notifyListeners();
+  }
+
+  /// Remove um veículo cadastrado da garagem pelo ID
+  void removeVehicle(String vehicleId) {
+    _vehicles.removeWhere((v) => v.id == vehicleId);
+    if (_selectedVehicle?.id == vehicleId) {
+      _selectedVehicle = _vehicles.isNotEmpty ? _vehicles.first : null;
+    }
     notifyListeners();
   }
 

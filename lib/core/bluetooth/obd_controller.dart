@@ -42,6 +42,10 @@ class ObdController extends ChangeNotifier {
   bool _isConnected = false;
   bool _isInitializing = false;
   bool _isReading = false;
+  bool _isPollingCycle = false;
+
+  /// Intervalo entre ciclos de leitura da ECU em milissegundos (padrão rápido: 250 ms)
+  int _pollingIntervalMs = 250;
 
   String? _connectedName;
   String? _connectedMac;
@@ -63,7 +67,21 @@ class ObdController extends ChangeNotifier {
   bool get isConnected => _isConnected;
   bool get isInitializing => _isInitializing;
   bool get isReading => _isReading;
-  bool get isBusy => _isConnecting || _isInitializing || _isReading;
+  bool get isBusy => _isConnecting || _isInitializing || _isReading || _isPollingCycle;
+
+  /// Intervalo de leitura configurado (em ms): 250 ms (padrão rápido), 500 ms ou 1000 ms
+  int get pollingIntervalMs => _pollingIntervalMs;
+  String get pollingIntervalLabel => '$_pollingIntervalMs ms';
+
+  /// Altera a frequência de leitura da ECU em tempo real
+  void setPollingIntervalMs(int ms) {
+    if (ms <= 0 || _pollingIntervalMs == ms) return;
+    _pollingIntervalMs = ms;
+    if (_isConnected) {
+      _startPollingTimer();
+    }
+    notifyListeners();
+  }
 
   String? get connectedName => _connectedName;
   String? get connectedMac => _connectedMac;
@@ -240,15 +258,22 @@ class ObdController extends ChangeNotifier {
     if (!_isConnected) return;
 
     // Executa a primeira leitura completa logo após o handshake
-    await refreshEthanol();
+    await refreshEthanol(manual: true);
 
-    // Mantém atualização periódica a cada 5 segundos enquanto conectado
+    // Inicia atualização periódica na frequência configurada (padrão rápido: 250 ms)
+    _startPollingTimer();
+  }
+
+  void _startPollingTimer() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_isConnected && !isBusy) {
-        refreshEthanol();
-      }
-    });
+    _pollTimer = Timer.periodic(
+      Duration(milliseconds: _pollingIntervalMs),
+      (_) {
+        if (_isConnected && !isBusy) {
+          refreshEthanol(manual: false);
+        }
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -256,17 +281,26 @@ class ObdController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   /// Consulta a ECU na fila serial FIFO atualizando a % de Etanol e os
   /// parâmetros pertinentes de telemetria do motor (RPM, STFT e LTFT).
-  Future<void> refreshEthanol() async {
+  ///
+  /// Quando [manual] é false (polling automático em background), os indicadores
+  /// são atualizados em tempo real sem travar a interface com estado de loading.
+  Future<void> refreshEthanol({bool manual = true}) async {
     if (!_isConnected || _connection == null || _inputBroadcast == null) return;
     if (_isReading || _isInitializing) return;
+    if (!manual && _isPollingCycle) return;
+
+    final bool showLoadingIndicator = manual;
 
     await _enqueue(() async {
       final conn = _connection;
       final stream = _inputBroadcast?.stream;
       if (!_isConnected || conn == null || stream == null) return;
 
-      _isReading = true;
-      notifyListeners();
+      _isPollingCycle = true;
+      if (showLoadingIndicator) {
+        _isReading = true;
+        notifyListeners();
+      }
 
       try {
         final stopwatch = Stopwatch()..start();
@@ -293,28 +327,61 @@ class ObdController extends ChangeNotifier {
             obdName: _connectedName,
             obdMacAddress: _connectedMac,
           );
-        } else {
-          _errorMessage = ethanolResult.errorMessage;
+          notifyListeners();
         }
 
         // 2. Leitura complementar de Telemetria do Motor (RPM, STFT e LTFT)
+        int? rpm;
+        double? stft;
+        double? ltft;
+
         if (_isConnected) {
-          final rpm = await ObdService.readEngineRpm(conn, inputStream: stream);
-          if (rpm != null) _engineRpm = rpm;
+          rpm = await ObdService.readEngineRpm(conn, inputStream: stream);
+          if (rpm != null) {
+            _engineRpm = rpm;
+            notifyListeners();
+          }
         }
         if (_isConnected) {
-          final stft =
+          stft =
               await ObdService.readShortTermFuelTrim(conn, inputStream: stream);
-          if (stft != null) _shortTermFuelTrim = stft;
+          if (stft != null) {
+            _shortTermFuelTrim = stft;
+            notifyListeners();
+          }
         }
         if (_isConnected) {
-          final ltft =
+          ltft =
               await ObdService.readLongTermFuelTrim(conn, inputStream: stream);
-          if (ltft != null) _longTermFuelTrim = ltft;
+          if (ltft != null) {
+            _longTermFuelTrim = ltft;
+            notifyListeners();
+          }
+        }
+
+        // Verifica se a ECU respondeu a qualquer parâmetro neste ciclo ou se já há telemetria ativa.
+        // Evita exibir falso aviso de "NO DATA / ignição desligada" quando os parâmetros estão sendo lidos.
+        final bool anySuccessNow =
+            ethanolResult.success || rpm != null || stft != null || ltft != null;
+        final bool hasActiveTelemetry = _ethanolPercentage != null ||
+            _engineRpm != null ||
+            _shortTermFuelTrim != null ||
+            _longTermFuelTrim != null;
+
+        if (anySuccessNow || hasActiveTelemetry) {
+          _errorMessage = null;
+          if (anySuccessNow) {
+            _lastUpdatedAt = DateTime.now();
+          }
+        } else {
+          _errorMessage = ethanolResult.errorMessage;
         }
       } catch (e) {
-        _errorMessage = 'Erro ao consultar a ECU: $e';
+        if (_lastUpdatedAt == null) {
+          _errorMessage = 'Erro ao consultar a ECU: $e';
+        }
       } finally {
+        _isPollingCycle = false;
         _isReading = false;
         notifyListeners();
       }
@@ -335,6 +402,7 @@ class ObdController extends ChangeNotifier {
     _isConnecting = false;
     _isInitializing = false;
     _isReading = false;
+    _isPollingCycle = false;
     _errorMessage = 'Leitor OBD-II desconectado.';
     GarageController.instance.markAllDisconnected();
     notifyListeners();
@@ -361,6 +429,7 @@ class ObdController extends ChangeNotifier {
     _isConnecting = false;
     _isInitializing = false;
     _isReading = false;
+    _isPollingCycle = false;
     _connectedName = null;
     _connectedMac = null;
     _ethanolPercentage = null;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/bluetooth/obd_controller.dart';
 import '../../../core/models/vehicle_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
@@ -13,9 +14,67 @@ import '../controllers/garage_controller.dart';
 /// Responsabilidades:
 /// 1. Listar os carros cadastrados do motorista (com apelido opcional em destaque).
 /// 2. Ao clicar em um carro, abrir o Diagnóstico Mínimo (QuickDiagnosticScreen).
-/// 3. Botão para cadastrar novo veículo e parear com o scanner OBD-II.
+/// 3. Permitir excluir perfis de veículos diretamente pelo card na Garagem.
+/// 4. Botão para cadastrar novo veículo e parear com o scanner OBD-II.
 class GarageScreen extends StatelessWidget {
   const GarageScreen({super.key});
+
+  Future<void> _confirmDeleteVehicle(
+    BuildContext context,
+    VehicleModel vehicle,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceCard,
+        title: const Text(
+          'Excluir veículo?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Deseja remover "${vehicle.displayName}" da sua garagem?',
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Excluir',
+              style: TextStyle(
+                color: AppColors.alertRed,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Se o veículo removido estiver conectado ao scanner, encerra a sessão OBD-II
+    if (vehicle.isObdConnected && ObdController.instance.isConnected) {
+      await ObdController.instance.disconnect();
+    }
+
+    GarageController.instance.removeVehicle(vehicle.id);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${vehicle.displayName} removido da garagem.'),
+          backgroundColor: AppColors.surfaceCard,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,16 +153,24 @@ class GarageScreen extends StatelessWidget {
                       ),
                       const Text(
                         'Toque para diagnosticar',
-                        style: TextStyle(color: AppTheme.green, fontSize: 11, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: AppTheme.green,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Expanded(
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
                     itemCount: vehicles.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final vehicle = vehicles[index];
                       return _buildVehicleCard(context, vehicle);
@@ -152,51 +219,77 @@ class GarageScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceInput,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.directions_car_filled_rounded,
+                          color: isConnected
+                              ? AppColors.ethanolNeon
+                              : AppColors.textMuted,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Apelido (se houver) ou Modelo do Carro
+                            Text(
+                              vehicle.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.white,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // Subtítulo: Modelo e Placa
+                            Text(
+                              vehicle.displaySubtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceInput,
-                        borderRadius: BorderRadius.circular(12),
+                    IconButton(
+                      tooltip: 'Excluir veículo',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        size: 20,
+                        color: AppColors.alertRed,
                       ),
-                      child: Icon(
-                        Icons.directions_car_filled_rounded,
-                        color: isConnected ? AppColors.ethanolNeon : AppColors.textMuted,
-                        size: 24,
-                      ),
+                      onPressed: () => _confirmDeleteVehicle(context, vehicle),
                     ),
-                    const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Apelido (se houver) ou Modelo do Carro
-                        Text(
-                          vehicle.displayName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        // Subtítulo: Modelo e Placa
-                        Text(
-                          vehicle.displaySubtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.muted,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
+                      color: AppTheme.muted,
                     ),
                   ],
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 16,
-                  color: AppTheme.muted,
                 ),
               ],
             ),
@@ -209,7 +302,9 @@ class GarageScreen extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+                      isConnected
+                          ? Icons.bluetooth_connected
+                          : Icons.bluetooth_disabled,
                       size: 15,
                       color: isConnected ? AppColors.obdCyan : AppTheme.muted,
                     ),
