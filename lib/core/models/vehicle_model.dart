@@ -9,6 +9,7 @@ class VehicleModel {
   final bool isObdConnected;
   final double ethanolPercentage;
   final double gasolinePercentage;
+  final bool isDemo; // Carro de exemplo (não recebe leituras reais)
 
   VehicleModel({
     required this.id,
@@ -20,6 +21,7 @@ class VehicleModel {
     this.isObdConnected = false,
     this.ethanolPercentage = 78.0,
     double? gasolinePercentage,
+    this.isDemo = false,
   }) : gasolinePercentage = gasolinePercentage ?? (100.0 - ethanolPercentage).clamp(0.0, 100.0);
 
   /// Retorna o apelido se existir, senão retorna o modelo do carro
@@ -51,6 +53,7 @@ class VehicleModel {
       isObdConnected: isObdConnected ?? this.isObdConnected,
       ethanolPercentage: ethanolPercentage ?? this.ethanolPercentage,
       gasolinePercentage: gasolinePercentage ?? this.gasolinePercentage,
+      isDemo: isDemo,
     );
   }
 }

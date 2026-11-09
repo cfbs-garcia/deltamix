@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_theme.dart';
 import '../features/garage/screens/garage_screen.dart';
-import '../features/gas_stations/screens/local_screen.dart';
+import '../features/diary/screens/diary_screen.dart';
 import '../features/obd_connection/screens/add_vehicle_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 
@@ -13,7 +13,7 @@ import '../features/profile/screens/profile_screen.dart';
 /// Conforme o diagrama da aplicação:
 /// - Tela Principal: Garagem de Veículos
 /// - Barra Inferior (3 Opções):
-///   - Esquerda: Postos Próximos (Mapa)
+///   - Esquerda: Diário / Dashboard dos veículos
 ///   - Centro (+): Cadastrar Veículo (Busca Bluetooth OBD)
 ///   - Direita: Perfil do Usuário
 class MainScaffold extends StatelessWidget {
@@ -48,7 +48,7 @@ class MainScaffold extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // -------------------------------------------------------------
-                // 1. ESQUERDA: POSTOS PRÓXIMOS (MAPA)
+                // 1. ESQUERDA: DIÁRIO / DASHBOARD DOS VEÍCULOS
                 // -------------------------------------------------------------
                 Expanded(
                   child: InkWell(
@@ -56,7 +56,7 @@ class MainScaffold extends StatelessWidget {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const LocalScreen()),
+                        MaterialPageRoute(builder: (context) => const DiaryScreen()),
                       );
                     },
                     child: Padding(
@@ -64,10 +64,10 @@ class MainScaffold extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Icon(Icons.location_on_outlined, color: AppTheme.white, size: 24),
+                          Icon(Icons.menu_book_outlined, color: AppTheme.white, size: 24),
                           SizedBox(height: 4),
                           Text(
-                            'Postos',
+                            'Diário',
                             style: TextStyle(
                               color: AppTheme.white,
                               fontSize: 11,

@@ -51,7 +51,7 @@ class AuthService {
     );
   }
 
-  // ------------------------------------------------- login social
+  // ------------------------------------------------- login com Google
   /// Login com Google (fluxo do próprio Firebase, sem SDK extra).
   Future<void> signInWithGoogle() async {
     final provider = GoogleAuthProvider()
@@ -61,16 +61,7 @@ class AuthService {
     await _ensureUserDoc(cred.user);
   }
 
-  /// Login com Facebook (fluxo do próprio Firebase, sem SDK extra).
-  Future<void> signInWithFacebook() async {
-    final provider = FacebookAuthProvider()
-      ..addScope('email')
-      ..addScope('public_profile');
-    final cred = await _auth.signInWithProvider(provider);
-    await _ensureUserDoc(cred.user);
-  }
-
-  /// Cria o documento em `users` no primeiro login social.
+  /// Cria o documento em `users` no primeiro login com Google.
   Future<void> _ensureUserDoc(User? user) async {
     if (user == null) return;
     final ref = _userDoc(user.uid);
@@ -159,7 +150,7 @@ class AuthService {
           return 'Esta conta foi desativada.';
         case 'account-exists-with-different-credential':
           return 'Já existe uma conta com este e-mail usando outro método '
-              'de login (e-mail/senha ou outra rede social). Entre por ele.';
+              'de login. Entre por ele.';
         case 'web-context-canceled':
         case 'canceled':
         case 'cancelled':

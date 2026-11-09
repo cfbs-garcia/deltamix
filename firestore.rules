@@ -1,11 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada usuário só acessa o próprio documento.
-    // Exclusão definitiva é bloqueada: a conta é só marcada como deleted (soft delete).
+
+    // Cada usuário só acessa os próprios dados (o uid da conta precisa
+    // ser igual ao uid do caminho).
     match /users/{uid} {
       allow read, create, update: if request.auth != null && request.auth.uid == uid;
+      // Conta nunca é apagada de verdade: só marcada como deleted (soft delete)
       allow delete: if false;
+
+      // Carros do usuário e o diário (leituras) de cada carro
+      match /vehicles/{vehicleId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+
+        match /readings/{readingId} {
+          allow read, write: if request.auth != null && request.auth.uid == uid;
+        }
+      }
     }
   }
 }

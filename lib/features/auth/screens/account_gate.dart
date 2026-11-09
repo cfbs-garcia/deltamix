@@ -25,7 +25,7 @@ class AccountGate extends StatelessWidget {
         }
         final user = snapshot.data;
         if (user == null) return const LoginScreen();
-        // Login com Google/Facebook não precisa do link de verificação.
+        // Login com Google não precisa do link de verificação.
         final isSocial = user.providerData.any((p) => p.providerId != 'password');
         if (!user.emailVerified && !isSocial) return const VerifyEmailScreen();
 
