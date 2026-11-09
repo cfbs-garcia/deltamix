@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/session_policy.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/validators.dart';
 
@@ -69,6 +70,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: email,
         password: pass,
       );
+      // Cadastro conta como sessão "lembrada" (a pessoa ainda precisa verificar o e-mail)
+      await SessionPolicy.instance.onLogin(rememberMe: true);
       // Volta para a raiz: o AccountGate leva para a verificação de e-mail.
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {

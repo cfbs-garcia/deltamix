@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../gas_stations/screens/local_screen.dart';
+import '../../diary/screens/diary_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 
 /// ============================================================================
@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // As 3 abas do aplicativo
   final List<Widget> _screens = const [
-    LocalScreen(),      // Aba 0: Esquerda (Postos / Mapa)
+    DiaryScreen(),      // Aba 0: Esquerda (Diário)
     CleanHomeView(),    // Aba 1: Centro (Tela Home Limpa)
     ProfileScreen(),    // Aba 2: Direita (Perfil)
   ];
@@ -38,9 +38,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.location_on_outlined),
-            activeIcon: Icon(Icons.location_on_rounded),
-            label: 'Postos',
+            icon: Icon(Icons.menu_book_outlined),
+            activeIcon: Icon(Icons.menu_book_rounded),
+            label: 'Diário',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.directions_car_outlined),

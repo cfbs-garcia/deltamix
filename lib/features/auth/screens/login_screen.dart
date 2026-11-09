@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/session_policy.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -39,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     try {
       await AuthService.instance.login(email: email, password: pass);
+      await SessionPolicy.instance.onLogin(rememberMe: _rememberMe);
       // Volta para a raiz: o AccountGate decide a tela (principal, verificação...).
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
@@ -53,6 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     try {
       await action();
+      await SessionPolicy.instance.onLogin(rememberMe: _rememberMe);
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
       final text = AuthService.errorMessage(e);
@@ -240,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // Botões Sociais (Google, Apple) no estilo dark/card
+                // Botão social (Google) no estilo dark/card
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -249,14 +252,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       iconSize: 32,
                       onTap: () =>
                           _socialLogin(AuthService.instance.signInWithGoogle),
-                    ),
-                    const SizedBox(width: 16),
-                    _buildSocialButton(
-                      icon: Icons.facebook_rounded,
-                      iconSize: 26,
-                      onTap: () => _socialLogin(
-                        AuthService.instance.signInWithFacebook,
-                      ),
                     ),
                   ],
                 ),

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../features/diary/controllers/diary_controller.dart';
 import '../../features/garage/controllers/garage_controller.dart';
 import 'obd_service.dart';
 
@@ -110,13 +111,12 @@ class ObdController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // 1. BUSCA DE APARELHOS OBD-II PAREADOS NO CELULAR
   // ---------------------------------------------------------------------------
-  /// Solicita permissões de Bluetooth/Localização e retorna apenas os scanners
+  /// Solicita permissões de Bluetooth e retorna apenas os scanners
   /// automotivos pareados (filtrados por palavras-chave como OBD, ELM, VGATE, etc.).
   Future<List<Map<String, String>>> getPairedObdDevices() async {
     await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
-      Permission.location,
     ].request();
 
     final rawDevices = await bluetooth.getPairedDevices();
@@ -375,6 +375,29 @@ class ObdController extends ChangeNotifier {
           }
         } else {
           _errorMessage = ethanolResult.errorMessage;
+        }
+
+        // Registra um instantâneo no Diário do carro ao qual o leitor está
+        // conectado (não importa qual carro está selecionado na Garagem).
+        final target = GarageController.instance.telemetryTarget;
+        if (anySuccessNow && target != null && !target.isDemo) {
+          // Primeiro registro desta conexão: fixa o vínculo leitor <-> carro
+          if (!target.isObdConnected &&
+              _connectedName != null &&
+              _connectedMac != null) {
+            GarageController.instance.bindObdToVehicle(
+              target.id,
+              _connectedName!,
+              _connectedMac!,
+            );
+          }
+          DiaryController.instance.recordSnapshot(
+            vehicleId: target.id,
+            ethanolPercentage: _ethanolPercentage,
+            rpm: _engineRpm,
+            stft: _shortTermFuelTrim,
+            ltft: _longTermFuelTrim,
+          );
         }
       } catch (e) {
         if (_lastUpdatedAt == null) {

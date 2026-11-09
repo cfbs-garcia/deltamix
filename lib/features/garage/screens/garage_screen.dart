@@ -3,6 +3,7 @@ import '../../../core/bluetooth/obd_controller.dart';
 import '../../../core/models/vehicle_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../diary/screens/diary_screen.dart';
 import '../../fuel_dashboard/screens/quick_diagnostic_screen.dart';
 import '../../obd_connection/screens/add_vehicle_screen.dart';
 import '../controllers/garage_controller.dart';
@@ -90,6 +91,11 @@ class GarageScreen extends StatelessWidget {
         child: ListenableBuilder(
           listenable: garage,
           builder: (context, _) {
+            if (garage.isLoading) {
+              return const Center(
+                child: CircularProgressIndicator(color: AppColors.ethanolNeon),
+              );
+            }
             final vehicles = garage.vehicles;
 
             if (vehicles.isEmpty) {
@@ -255,7 +261,9 @@ class GarageScreen extends StatelessWidget {
                             const SizedBox(height: 2),
                             // Subtítulo: Modelo e Placa
                             Text(
-                              vehicle.displaySubtitle,
+                              vehicle.isDemo
+                                  ? '${vehicle.displaySubtitle} • EXEMPLO'
+                                  : vehicle.displaySubtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -273,6 +281,24 @@ class GarageScreen extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      tooltip: 'Abrir diário',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(
+                        Icons.menu_book_rounded,
+                        size: 20,
+                        color: AppColors.obdCyan,
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DiaryScreen(initialVehicleId: vehicle.id),
+                          ),
+                        );
+                      },
+                    ),
                     IconButton(
                       tooltip: 'Excluir veículo',
                       visualDensity: VisualDensity.compact,
