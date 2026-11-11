@@ -58,7 +58,22 @@ class UserDataSync {
       data.sprints.forEach(DiaryController.instance.setSprints);
 
       // Carro de exemplo só aparece para quem ainda não tem carros próprios
-      if (data.vehicles.isEmpty) DemoData.seed();
+      if (data.vehicles.isEmpty) {
+        DemoData.seed();
+      } else {
+        // Se o veículo ativo já possui um scanner OBD-II vinculado, inicia a
+        // conexão / espera automática sem o motorista precisar conectar manualmente
+        final active = GarageController.instance.activeVehicle;
+        if (active != null &&
+            !active.isDemo &&
+            active.obdMacAddress != null &&
+            active.obdMacAddress!.trim().isNotEmpty) {
+          ObdController.instance.enableAutoConnectForVehicle(
+            active.obdName ?? 'Leitor OBD-II',
+            active.obdMacAddress!,
+          );
+        }
+      }
     } catch (e) {
       debugPrint('Falha ao carregar dados do usuário: $e');
     } finally {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/models/refueling_sprint.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -37,6 +38,7 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
   final _locationController = TextEditingController();
 
   bool _isLoadingLocation = false;
+  bool _showOpenSettingsButton = false;
   String? _errorText;
 
   static const List<FuelType> _singleFuelTypes = [
@@ -75,22 +77,32 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
     if (_isLoadingLocation) return;
     setState(() {
       _isLoadingLocation = true;
+      _showOpenSettingsButton = false;
       _errorText = null;
     });
 
     try {
-      final loc = await LocationService.instance.getCurrentLocationLabel();
+      final result = await LocationService.instance.fetchCurrentLocation();
       if (!mounted) return;
-      if (loc != null && loc.isNotEmpty) {
+
+      if (result.label != null && result.label!.isNotEmpty) {
         final current = _locationController.text.trim();
         if (current.isEmpty) {
-          _locationController.text = loc;
-        } else if (!current.contains(loc)) {
-          _locationController.text = '$current • $loc';
+          _locationController.text = result.label!;
+        } else if (!current.contains(result.label!)) {
+          _locationController.text = '$current • ${result.label!}';
         }
-      } else {
+      }
+
+      if (result.permissionDenied &&
+          (result.label == null || result.label!.isEmpty)) {
         setState(() {
-          _errorText =
+          _showOpenSettingsButton = true;
+          _errorText = result.warningMessage;
+        });
+      } else if (result.label == null || result.label!.isEmpty) {
+        setState(() {
+          _errorText = result.warningMessage ??
               'Não foi possível identificar o endereço automaticamente. Digite o local abaixo.';
         });
       }
@@ -192,23 +204,29 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
-                    children: [
-                      Icon(
-                        Icons.local_gas_station_rounded,
-                        color: AppColors.ethanolNeon,
-                        size: 22,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Registrar Abastecimento',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                  const Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.local_gas_station_rounded,
+                          color: AppColors.ethanolNeon,
+                          size: 22,
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Registrar Abastecimento',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(
@@ -345,59 +363,59 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
                 ),
               ],
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
-              // 3. LOCALIZAÇÃO DO ABASTECIMENTO (GPS + MANUAL)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'LOCAL / POSTO DE COMBUSTÍVEL',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textMuted,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: _isLoadingLocation ? null : _fetchDeviceLocation,
-                    icon: _isLoadingLocation
-                        ? const SizedBox(
-                            width: 13,
-                            height: 13,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.ethanolNeon,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.my_location_rounded,
-                            size: 15,
-                            color: AppColors.ethanolNeon,
-                          ),
-                    label: Text(
-                      _isLoadingLocation
-                          ? 'Buscando GPS...'
-                          : 'Puxar localização atual',
-                      style: const TextStyle(
-                        color: AppColors.ethanolNeon,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+              // 3. LOCALIZAÇÃO DO ABASTECIMENTO (BOTÃO ACIMA DA CAIXA DE DIGITAÇÃO)
+              const Text(
+                'LOCAL / POSTO DE COMBUSTÍVEL',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textMuted,
+                  letterSpacing: 1.1,
+                ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.ethanolNeon,
+                  backgroundColor:
+                      AppColors.ethanolNeon.withValues(alpha: 0.08),
+                  side: BorderSide(
+                    color: AppColors.ethanolNeon.withValues(alpha: 0.45),
+                  ),
+                  minimumSize: const Size.fromHeight(42),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _isLoadingLocation ? null : _fetchDeviceLocation,
+                icon: _isLoadingLocation
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.ethanolNeon,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.my_location_rounded,
+                        size: 17,
+                        color: AppColors.ethanolNeon,
+                      ),
+                label: Text(
+                  _isLoadingLocation
+                      ? 'Buscando localização...'
+                      : 'Puxar localização atual do celular',
+                  style: const TextStyle(
+                    color: AppColors.ethanolNeon,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _locationController,
                 textCapitalization: TextCapitalization.words,
@@ -424,14 +442,37 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.border),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.border),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                 ),
               ),
+
+              if (_showOpenSettingsButton) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => openAppSettings(),
+                    icon: const Icon(
+                      Icons.settings_outlined,
+                      size: 16,
+                      color: AppColors.obdCyan,
+                    ),
+                    label: const Text(
+                      'Abrir Configurações do App para permitir GPS',
+                      style: TextStyle(
+                        color: AppColors.obdCyan,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
 
               // 4. RESUMO FINANCEIRO AUTOMÁTICO
               if (_totalLiters > 0 || _totalCost > 0) ...[
@@ -567,11 +608,11 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
       ),
     );
@@ -621,7 +662,7 @@ class _RegisterRefuelingSheetState extends State<RegisterRefuelingSheet> {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColors.border),
+                borderSide: const BorderSide(color: AppColors.border),
               ),
             ),
             items: _singleFuelTypes.map((f) {
