@@ -73,6 +73,27 @@ class GarageController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Altera o nome/apelido de um veículo cadastrado e sincroniza com a nuvem
+  void renameVehicle(String vehicleId, String newName) {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+
+    final index = _vehicles.indexWhere((v) => v.id == vehicleId);
+    if (index == -1) return;
+
+    final updated = _vehicles[index].copyWith(
+      model: trimmed,
+      nickname: trimmed,
+    );
+    _vehicles[index] = updated;
+    if (_selectedVehicle?.id == vehicleId) {
+      _selectedVehicle = updated;
+    }
+    notifyListeners();
+
+    unawaited(CloudRepository.instance.saveVehicle(updated));
+  }
+
   /// Remove um veículo cadastrado da garagem pelo ID (e da nuvem, com o diário)
   void removeVehicle(String vehicleId) {
     final index = _vehicles.indexWhere((v) => v.id == vehicleId);

@@ -15,10 +15,71 @@ import '../controllers/garage_controller.dart';
 /// Responsabilidades:
 /// 1. Listar os carros cadastrados do motorista (com apelido opcional em destaque).
 /// 2. Ao clicar em um carro, abrir o Diagnóstico Mínimo (QuickDiagnosticScreen).
-/// 3. Permitir excluir perfis de veículos diretamente pelo card na Garagem.
+/// 3. Permitir editar o nome ou excluir perfis de veículos pelo card na Garagem.
 /// 4. Botão para cadastrar novo veículo e parear com o scanner OBD-II.
 class GarageScreen extends StatelessWidget {
   const GarageScreen({super.key});
+
+  Future<void> _editVehicleName(
+    BuildContext context,
+    VehicleModel vehicle,
+  ) async {
+    String typedName = vehicle.displayName;
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceCard,
+        title: const Text(
+          'Alterar nome do veículo',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: TextFormField(
+          initialValue: vehicle.displayName,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Nome / Apelido do carro',
+            prefixIcon: Icon(Icons.directions_car_outlined),
+          ),
+          onChanged: (v) => typedName = v,
+          onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, typedName.trim()),
+            child: const Text(
+              'Salvar',
+              style: TextStyle(
+                color: AppColors.ethanolNeon,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName.isEmpty) return;
+
+    GarageController.instance.renameVehicle(vehicle.id, newName);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Nome do veículo alterado para "$newName".'),
+          backgroundColor: AppColors.surfaceCard,
+        ),
+      );
+    }
+  }
 
   Future<void> _confirmDeleteVehicle(
     BuildContext context,
@@ -281,6 +342,16 @@ class GarageScreen extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      tooltip: 'Alterar nome do veículo',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        size: 19,
+                        color: AppColors.textMuted,
+                      ),
+                      onPressed: () => _editVehicleName(context, vehicle),
+                    ),
                     IconButton(
                       tooltip: 'Abrir diário',
                       visualDensity: VisualDensity.compact,

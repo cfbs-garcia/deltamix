@@ -36,13 +36,6 @@ class DetailedDiagnosticScreen extends StatefulWidget {
 class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
   final ObdController _obd = ObdController.instance;
 
-  /// Cálculo da relação Ar-Combustível (AFR) estequiométrica estimada da mistura:
-  /// Gasolina pura = 14.7:1 | Etanol hidratado puro = 9.0:1
-  double _calculateEstimatedAfr(double ethanolPct) {
-    final e = ethanolPct.clamp(0.0, 100.0) / 100.0;
-    return ((1.0 - e) * 14.7) + (e * 9.0);
-  }
-
   /// Formata os valores de Fuel Trim (STFT / LTFT) exibindo sinal explícito (+ ou -).
   String _formatFuelTrim(double? trim) {
     if (trim == null) return '-- %';
@@ -59,7 +52,6 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
         final double ethanol =
             _obd.ethanolPercentage ?? widget.vehicle.ethanolPercentage;
         final double gasoline = (100.0 - ethanol).clamp(0.0, 100.0);
-        final double afr = _calculateEstimatedAfr(ethanol);
         final bool isLoading = _obd.isInitializing || _obd.isReading;
 
         // Formatação dos 3 indicadores pertinentes de telemetria do motor
@@ -222,26 +214,17 @@ class _DetailedDiagnosticScreenState extends State<DetailedDiagnosticScreen> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Badges: [ Predominante ]  [ AFR Est. ]
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildTopPillBadge(
-                              label: ethanol >= 75.0
-                                  ? 'Predominante: Etanol'
-                                  : ethanol <= 32.0
-                                      ? 'Predominante: Gasolina'
-                                      : 'Mistura Flex',
-                              color: EthanolGaugeChart.colorForLevel(ethanol),
-                              icon: Icons.local_fire_department_rounded,
-                            ),
-                            const SizedBox(width: 10),
-                            _buildTopPillBadge(
-                              label: 'AFR Est.: ${afr.toStringAsFixed(1)}:1',
-                              color: AppColors.obdCyan,
-                              icon: Icons.tune_rounded,
-                            ),
-                          ],
+                        // Badge: [ Predominante ]
+                        Center(
+                          child: _buildTopPillBadge(
+                            label: ethanol >= 75.0
+                                ? 'Predominante: Etanol'
+                                : ethanol <= 32.0
+                                    ? 'Predominante: Gasolina'
+                                    : 'Mistura Flex',
+                            color: EthanolGaugeChart.colorForLevel(ethanol),
+                            icon: Icons.local_fire_department_rounded,
+                          ),
                         ),
                       ],
                     ),

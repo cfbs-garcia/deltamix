@@ -332,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _editName(String current) async {
-    final controller = TextEditingController(text: current);
+    String typedName = current;
     final newName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -341,8 +341,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Editar o nome',
           style: TextStyle(color: AppColors.textPrimary),
         ),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: current,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
           style: const TextStyle(color: AppColors.textPrimary),
@@ -350,6 +350,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             hintText: 'Nome completo',
             prefixIcon: Icon(Icons.person_outline_rounded),
           ),
+          onChanged: (v) => typedName = v,
+          onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
         actions: [
           TextButton(
@@ -360,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, typedName.trim()),
             child: const Text(
               'Salvar',
               style: TextStyle(color: AppColors.ethanolNeon),
@@ -369,7 +371,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    controller.dispose();
     if (newName != null && newName.isNotEmpty) {
       try {
         await AuthService.instance.updateName(newName);
