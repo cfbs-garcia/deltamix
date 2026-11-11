@@ -427,6 +427,7 @@ class ObdController extends ChangeNotifier {
     _isReading = false;
     _isPollingCycle = false;
     _errorMessage = 'Leitor OBD-II desconectado.';
+    DiaryController.instance.resetSessionFlags();
     GarageController.instance.markAllDisconnected();
     notifyListeners();
   }
@@ -464,6 +465,7 @@ class ObdController extends ChangeNotifier {
     _lastUpdatedAt = null;
     _errorMessage = null;
 
+    DiaryController.instance.resetSessionFlags();
     GarageController.instance.markAllDisconnected();
     notifyListeners();
 

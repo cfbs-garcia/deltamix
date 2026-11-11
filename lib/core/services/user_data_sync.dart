@@ -14,10 +14,10 @@ import 'cloud_repository.dart';
 /// SINCRONIZA OS DADOS DO USUÁRIO LOGADO COM O FIRESTORE
 /// ============================================================================
 ///
-/// - Ao entrar numa conta: carrega os carros e o diário daquela conta.
+/// - Ao entrar numa conta: carrega os carros, o diário e as sprints daquela conta.
 /// - Ao sair (ou trocar de conta): limpa tudo da memória, para que nenhum dado
 ///   de uma pessoa apareça para outra, e desconecta o leitor OBD-II.
-/// - As gravações (carro novo, leituras, exclusão) são feitas pelos
+/// - As gravações (carro novo, leituras, sprints, exclusão) são feitas pelos
 ///   controllers via [CloudRepository].
 class UserDataSync {
   UserDataSync._();
@@ -55,6 +55,7 @@ class UserDataSync {
       if (token != _token) return; // outra troca de conta aconteceu no meio
       GarageController.instance.replaceAll(data.vehicles);
       data.entries.forEach(DiaryController.instance.setEntries);
+      data.sprints.forEach(DiaryController.instance.setSprints);
 
       // Carro de exemplo só aparece para quem ainda não tem carros próprios
       if (data.vehicles.isEmpty) DemoData.seed();

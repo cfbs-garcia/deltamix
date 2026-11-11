@@ -9,11 +9,15 @@ service cloud.firestore {
       // Conta nunca é apagada de verdade: só marcada como deleted (soft delete)
       allow delete: if false;
 
-      // Carros do usuário e o diário (leituras) de cada carro
+      // Carros do usuário, diário (leituras) e sprints de abastecimento de cada carro
       match /vehicles/{vehicleId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
 
         match /readings/{readingId} {
+          allow read, write: if request.auth != null && request.auth.uid == uid;
+        }
+
+        match /sprints/{sprintId} {
           allow read, write: if request.auth != null && request.auth.uid == uid;
         }
       }

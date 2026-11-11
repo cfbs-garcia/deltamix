@@ -2,20 +2,24 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../../core/models/diary_entry.dart';
+import '../../../core/models/refueling_sprint.dart';
 import '../../../core/models/vehicle_model.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../fuel_dashboard/widgets/ethanol_gauge_chart.dart';
 import '../../garage/controllers/garage_controller.dart';
 import '../controllers/diary_controller.dart';
 import '../widgets/ethanol_trend_chart.dart';
+import '../widgets/register_refueling_sheet.dart';
 
 /// ============================================================================
-/// DIÁRIO / DASHBOARD DO VEÍCULO
+/// DIÁRIO / DASHBOARD DO VEÍCULO E SPRINTS DE ABASTECIMENTO
 /// ============================================================================
 ///
-/// Mostra, para cada carro da Garagem, as últimas informações coletadas pelo
-/// scanner OBD-II: última leitura (etanol, RPM, STFT, LTFT), evolução da mistura,
-/// um resumo e o histórico de registros agrupado por dia.
+/// Mostra, para cada carro da Garagem:
+/// 1. As Sprints de Abastecimento (ciclo ativo em andamento + ciclos anteriores
+///    concluídos), com tipo de combustível, litros, preço/L, valor pago e local.
+/// 2. O comportamento dos indicadores lidos via OBD-II (Etanol %, RPM, STFT,
+///    LTFT e gráfico de evolução) filtrado pela Sprint selecionada ou geral.
 class DiaryScreen extends StatefulWidget {
   /// Veículo exibido ao abrir (por padrão, o veículo ativo da Garagem).
   final String? initialVehicleId;
@@ -27,13 +31,355 @@ class DiaryScreen extends StatefulWidget {
 }
 
 class _DiaryScreenState extends State<DiaryScreen> {
-  String? _selectedId;
+  String? _selectedVehicleId;
+
+  /// ID da Sprint selecionada, ou `'__ALL__'` para ver todas as leituras juntas.
+  /// Quando `null`, seleciona automaticamente a Sprint mais recente (ativa).
+  String? _selectedSprintId;
 
   @override
   void initState() {
     super.initState();
-    _selectedId =
+    _selectedVehicleId =
         widget.initialVehicleId ?? GarageController.instance.activeVehicle?.id;
+  }
+
+  Future<void> _openRegisterRefueling(VehicleModel vehicle) async {
+    final hasActive =
+        DiaryController.instance.activeSprintFor(vehicle.id) != null;
+
+    final newSprint = await showModalBottomSheet<RefuelingSprint>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => RegisterRefuelingSheet(hasActiveSprint: hasActive),
+    );
+
+    if (newSprint == null || !mounted) return;
+
+    await DiaryController.instance.startNewSprint(vehicle.id, newSprint);
+    if (!mounted) return;
+
+    setState(() {
+      _selectedSprintId = newSprint.id;
+    });
+
+    final sprintCount =
+        DiaryController.instance.sprintsFor(vehicle.id).length;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hasActive
+              ? 'Sprint anterior concluída! Sprint #$sprintCount iniciada.'
+              : 'Sprint #$sprintCount iniciada com sucesso!',
+        ),
+        backgroundColor: AppColors.surfaceCard,
+      ),
+    );
+  }
+
+  Future<void> _openSprintPickerModal(
+    List<RefuelingSprint> sprints,
+    RefuelingSprint? currentSelected,
+    bool showingAll,
+  ) async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surfaceCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Selecionar Sprint',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        '${sprints.length} ${sprints.length == 1 ? 'sprint' : 'sprints'}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Opção de ver Todas as leituras juntas
+                  InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => Navigator.pop(ctx, '__ALL__'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: showingAll
+                            ? AppColors.obdCyan.withValues(alpha: 0.14)
+                            : AppColors.surfaceInput,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color:
+                              showingAll ? AppColors.obdCyan : AppColors.border,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.layers_rounded,
+                            size: 18,
+                            color: showingAll
+                                ? AppColors.obdCyan
+                                : AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Todas as leituras (Histórico Geral)',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (showingAll)
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 18,
+                              color: AppColors.obdCyan,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, color: AppColors.border),
+                  const SizedBox(height: 10),
+
+                  // Lista vertical de todas as Sprints (da mais recente/ativa para a mais antiga)
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: sprints.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, idx) {
+                        final sprintIndex = sprints.length - 1 - idx;
+                        final s = sprints[sprintIndex];
+                        final sprintNumber = sprintIndex + 1;
+                        final isSelected =
+                            !showingAll && currentSelected?.id == s.id;
+                        final accent = s.isActive
+                            ? AppColors.ethanolNeon
+                            : AppColors.obdCyan;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => Navigator.pop(ctx, s.id),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? accent.withValues(alpha: 0.14)
+                                  : AppColors.surfaceInput,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected ? accent : AppColors.border,
+                                width: isSelected ? 1.4 : 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceCard,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    s.isActive
+                                        ? Icons.bolt_rounded
+                                        : Icons.history_rounded,
+                                    size: 18,
+                                    color: accent,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Sprint #$sprintNumber',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                          if (s.isActive) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.ethanolNeon
+                                                    .withValues(alpha: 0.18),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: const Text(
+                                                'ATUAL',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: AppColors.ethanolNeon,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${s.displayFuelTitle} • ${_num(s.totalLiters)} L • R\$ ${_money(s.totalCost)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${_dayLabel(s.startedAt)} às ${_hm(s.startedAt)}'
+                                        '${s.location != null && s.location!.isNotEmpty ? ' • ${s.location}' : ''}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 20,
+                                    color: accent,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (chosen == null || !mounted) return;
+    setState(() => _selectedSprintId = chosen);
+  }
+
+  Future<void> _confirmDeleteSprint(
+    VehicleModel vehicle,
+    RefuelingSprint sprint,
+    int sprintNumber,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceCard,
+        title: Text(
+          'Excluir Sprint #$sprintNumber?',
+          style: const TextStyle(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Deseja remover a Sprint #$sprintNumber (${sprint.fuelType.label} • ${_dayLabel(sprint.startedAt)})?',
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Excluir',
+              style: TextStyle(
+                color: AppColors.alertRed,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await DiaryController.instance.deleteSprint(vehicle.id, sprint.id);
+    if (mounted && _selectedSprintId == sprint.id) {
+      setState(() => _selectedSprintId = null);
+    }
   }
 
   @override
@@ -41,7 +387,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Diário do Veículo'),
+        title: const Text('Diário e Abastecimentos'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -63,10 +409,38 @@ class _DiaryScreenState extends State<DiaryScreen> {
             if (vehicles.isEmpty) return const _NoVehicles();
 
             final vehicle = vehicles.firstWhere(
-              (v) => v.id == _selectedId,
+              (v) => v.id == _selectedVehicleId,
               orElse: () => vehicles.first,
             );
-            final entries = DiaryController.instance.entriesFor(vehicle.id);
+
+            final allEntries = DiaryController.instance.entriesFor(vehicle.id);
+            final sprints = DiaryController.instance.sprintsFor(vehicle.id);
+            final bool showingAll = _selectedSprintId == '__ALL__';
+
+            // Determina qual Sprint está selecionada no momento
+            RefuelingSprint? selectedSprint;
+            if (sprints.isNotEmpty && !showingAll) {
+              if (_selectedSprintId != null) {
+                for (final s in sprints) {
+                  if (s.id == _selectedSprintId) {
+                    selectedSprint = s;
+                    break;
+                  }
+                }
+              }
+              selectedSprint ??= sprints.last;
+            }
+
+            final int? selectedSprintNumber = selectedSprint != null
+                ? sprints.indexOf(selectedSprint) + 1
+                : null;
+
+            final displayedEntries = selectedSprint != null
+                ? DiaryController.instance.entriesForSprint(
+                    vehicle.id,
+                    selectedSprint,
+                  )
+                : allEntries;
 
             return ListView(
               physics: const BouncingScrollPhysics(),
@@ -76,20 +450,104 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   _VehicleSelector(
                     vehicles: vehicles,
                     selectedId: vehicle.id,
-                    onSelected: (id) => setState(() => _selectedId = id),
+                    onSelected: (id) => setState(() {
+                      _selectedVehicleId = id;
+                      _selectedSprintId = null;
+                    }),
                   ),
                   const SizedBox(height: 16),
                 ],
                 _VehicleHeader(
                   vehicle: vehicle,
-                  last: entries.isEmpty ? null : entries.last,
-                  count: entries.length,
+                  last: allEntries.isEmpty ? null : allEntries.last,
+                  count: allEntries.length,
                 ),
                 const SizedBox(height: 20),
-                if (entries.isEmpty)
-                  const _EmptyDiary()
+
+                // =============================================================
+                // SEÇÃO DE SPRINTS DE ABASTECIMENTO
+                // =============================================================
+                Row(
+                  children: [
+                    const Expanded(
+                      child: _SectionTitle('SPRINTS DE ABASTECIMENTO'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        backgroundColor:
+                            AppColors.ethanolNeon.withValues(alpha: 0.14),
+                        foregroundColor: AppColors.ethanolNeon,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 6,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: AppColors.ethanolNeon.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      onPressed: () => _openRegisterRefueling(vehicle),
+                      icon: const Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: 15,
+                      ),
+                      label: const Text(
+                        'Abastecer',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                if (sprints.isEmpty)
+                  _EmptySprintsBanner(
+                    onRegister: () => _openRegisterRefueling(vehicle),
+                  )
+                else ...[
+                  _SprintPickerTile(
+                    selectedSprint: selectedSprint,
+                    sprintNumber: selectedSprintNumber,
+                    totalSprints: sprints.length,
+                    showingAll: showingAll,
+                    onTap: () => _openSprintPickerModal(
+                      sprints,
+                      selectedSprint,
+                      showingAll,
+                    ),
+                  ),
+                  if (selectedSprint != null && selectedSprintNumber != null) ...[
+                    const SizedBox(height: 10),
+                    _SprintDetailCard(
+                      sprint: selectedSprint,
+                      sprintNumber: selectedSprintNumber,
+                      readingsCount: displayedEntries.length,
+                      onDelete: () => _confirmDeleteSprint(
+                        vehicle,
+                        selectedSprint!,
+                        selectedSprintNumber,
+                      ),
+                    ),
+                  ],
+                ],
+
+                const SizedBox(height: 22),
+
+                if (displayedEntries.isEmpty)
+                  _EmptyDiary(isFilteredBySprint: selectedSprint != null)
                 else
-                  ..._buildContent(entries),
+                  ..._buildContent(
+                    displayedEntries,
+                    sprint: selectedSprint,
+                  ),
               ],
             );
           },
@@ -98,8 +556,12 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
   }
 
-  List<Widget> _buildContent(List<DiaryEntry> entries) {
+  List<Widget> _buildContent(
+    List<DiaryEntry> entries, {
+    RefuelingSprint? sprint,
+  }) {
     final last = entries.last;
+    final scopeSuffix = sprint != null ? ' NA SPRINT' : '';
 
     // Valores para o gráfico (últimos 24 registros com etanol)
     final ethanolSeries = entries
@@ -118,7 +580,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
     final maxRpm = rpms.isEmpty ? null : rpms.reduce((a, b) => a > b ? a : b);
 
     return [
-      const _SectionTitle('ÚLTIMA LEITURA'),
+      _SectionTitle('ÚLTIMA LEITURA$scopeSuffix'),
       const SizedBox(height: 10),
       _LastReadingCard(entry: last),
       const SizedBox(height: 12),
@@ -147,14 +609,14 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ],
       ),
       const SizedBox(height: 24),
-      const _SectionTitle('EVOLUÇÃO DO ETANOL'),
+      _SectionTitle('EVOLUÇÃO DO ETANOL$scopeSuffix'),
       const SizedBox(height: 10),
       _Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Últimos ${chartValues.length} registros',
+              'Últimos ${chartValues.length} registros${sprint != null ? ' desta Sprint' : ''}',
               style: const TextStyle(
                 color: AppColors.textMuted,
                 fontSize: 12,
@@ -166,7 +628,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ),
       ),
       const SizedBox(height: 24),
-      const _SectionTitle('RESUMO'),
+      _SectionTitle('RESUMO$scopeSuffix'),
       const SizedBox(height: 10),
       Row(
         children: [
@@ -193,7 +655,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ],
       ),
       const SizedBox(height: 24),
-      const _SectionTitle('HISTÓRICO'),
+      _SectionTitle('HISTÓRICO DE LEITURAS$scopeSuffix'),
       const SizedBox(height: 10),
       ..._buildHistory(entries),
     ];
@@ -257,7 +719,365 @@ class _DiaryScreenState extends State<DiaryScreen> {
 }
 
 // =============================================================================
-// COMPONENTES
+// COMPONENTES DE SPRINT DE ABASTECIMENTO
+// =============================================================================
+
+class _EmptySprintsBanner extends StatelessWidget {
+  final VoidCallback onRegister;
+
+  const _EmptySprintsBanner({required this.onRegister});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceInput,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.local_gas_station_rounded,
+              color: AppColors.ethanolNeon,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Nenhum abastecimento registrado',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Registre quando abastecer para iniciar uma Sprint e acompanhar como o carro reage a cada tanque.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textSecondary,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Seletor compacto de Sprint (abre modal vertical com todas as Sprints ao tocar)
+class _SprintPickerTile extends StatelessWidget {
+  final RefuelingSprint? selectedSprint;
+  final int? sprintNumber;
+  final int totalSprints;
+  final bool showingAll;
+  final VoidCallback onTap;
+
+  const _SprintPickerTile({
+    required this.selectedSprint,
+    required this.sprintNumber,
+    required this.totalSprints,
+    required this.showingAll,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isCurrent = selectedSprint?.isActive == true && !showingAll;
+    final accent = isCurrent ? AppColors.ethanolNeon : AppColors.obdCyan;
+
+    final String title = showingAll || selectedSprint == null
+        ? 'Todas as leituras ($totalSprints ${totalSprints == 1 ? 'sprint' : 'sprints'})'
+        : isCurrent
+            ? 'Sprint #$sprintNumber (Atual) • ${selectedSprint!.fuelType.label}'
+            : 'Sprint #$sprintNumber • ${selectedSprint!.fuelType.label}';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: accent.withValues(alpha: 0.55),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              showingAll
+                  ? Icons.layers_rounded
+                  : isCurrent
+                      ? Icons.bolt_rounded
+                      : Icons.history_rounded,
+              size: 18,
+              color: accent,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceInput,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Trocar ($totalSprints)',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SprintDetailCard extends StatelessWidget {
+  final RefuelingSprint sprint;
+  final int sprintNumber;
+  final int readingsCount;
+  final VoidCallback onDelete;
+
+  const _SprintDetailCard({
+    required this.sprint,
+    required this.sprintNumber,
+    required this.readingsCount,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = sprint.isActive;
+    final badgeColor = isActive ? AppColors.ethanolNeon : AppColors.obdCyan;
+
+    return _Card(
+      borderColor: badgeColor.withValues(alpha: 0.35),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: badgeColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Text(
+                        isActive
+                            ? 'SPRINT #$sprintNumber • EM ANDAMENTO'
+                            : 'SPRINT #$sprintNumber • CONCLUÍDA',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: badgeColor,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Excluir Sprint',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+                onPressed: onDelete,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            sprint.displayFuelTitle,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          if (sprint.isMix) ...[
+            const SizedBox(height: 4),
+            Text(
+              '1º: ${(sprint.primaryFuelType ?? FuelType.etanol).label} (${_num(sprint.liters)} L a R\$ ${_money(sprint.pricePerLiter)}/L)\n'
+              '2º: ${sprint.secondaryFuelType!.label} (${_num(sprint.secondaryLiters!)} L a R\$ ${_money(sprint.secondaryPricePerLiter!)}/L)',
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AppColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniStat(
+                  'LITROS',
+                  '${_num(sprint.totalLiters)} L',
+                  AppColors.textPrimary,
+                ),
+              ),
+              Expanded(
+                child: _buildMiniStat(
+                  sprint.isMix ? 'PREÇO MÉDIO/L' : 'PREÇO / LITRO',
+                  'R\$ ${_money(sprint.averagePricePerLiter)}',
+                  AppColors.textSecondary,
+                ),
+              ),
+              Expanded(
+                child: _buildMiniStat(
+                  'VALOR TOTAL',
+                  'R\$ ${_money(sprint.totalCost)}',
+                  AppColors.ethanolNeon,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 10),
+          if (sprint.location != null && sprint.location!.isNotEmpty) ...[
+            Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 14,
+                  color: AppColors.obdCyan,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    sprint.location!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  sprint.endedAt == null
+                      ? 'Início: ${_dayLabel(sprint.startedAt)} às ${_hm(sprint.startedAt)} • Ativa'
+                      : '${_dayLabel(sprint.startedAt)} (${_hm(sprint.startedAt)}) → ${_dayLabel(sprint.endedAt!)} (${_hm(sprint.endedAt!)})',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$readingsCount leituras ECU',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: badgeColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String value, Color valueColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textMuted,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// COMPONENTES GERAIS DO DIÁRIO
 // =============================================================================
 
 class _SectionTitle extends StatelessWidget {
@@ -342,31 +1162,39 @@ class _NoVehicles extends StatelessWidget {
 }
 
 class _EmptyDiary extends StatelessWidget {
-  const _EmptyDiary();
+  final bool isFilteredBySprint;
+
+  const _EmptyDiary({this.isFilteredBySprint = false});
 
   @override
   Widget build(BuildContext context) {
-    return const _Card(
-      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+    return _Card(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
       child: Column(
         children: [
-          Icon(Icons.hourglass_empty_rounded,
-              size: 40, color: AppColors.textMuted),
-          SizedBox(height: 12),
+          const Icon(
+            Icons.hourglass_empty_rounded,
+            size: 40,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(height: 12),
           Text(
-            'Ainda sem leituras',
-            style: TextStyle(
+            isFilteredBySprint
+                ? 'Aguardando leituras nesta Sprint'
+                : 'Ainda sem leituras',
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
-            'Conecte o leitor OBD-II a este carro. As leituras da ECU serão '
-            'registradas aqui automaticamente.',
+            isFilteredBySprint
+                ? 'Conecte o leitor OBD-II e ande com o veículo. Os parâmetros desta Sprint serão registrados automaticamente.'
+                : 'Conecte o leitor OBD-II a este carro. As leituras da ECU serão registradas aqui automaticamente.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
           ),
         ],
       ),
@@ -598,7 +1426,7 @@ class _LastReadingCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'ETANOL NO TANQUE',
+                    'ETANOL NO TANQUE (ECU)',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -889,6 +1717,9 @@ String _num(double v, {bool signed = false}) {
   if (signed && v > 0) s = '+$s';
   return s;
 }
+
+/// Formata valor monetário com 2 casas decimais e vírgula (ex.: 3,79).
+String _money(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
 /// Inteiro com separador de milhar (ex.: 1.850).
 String _thousands(int v) {
